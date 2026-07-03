@@ -1,0 +1,22 @@
+# Binaries
+/collector
+/bin/
+*.exe
+
+# Test & coverage output
+*.test
+*.out
+coverage.*
+
+# Local runtime data (docker volumes bind-mounts, if any)
+/data/
+/grafana-data/
+
+# Local secret/override configs
+configs/config.local.yaml
+*.local.yaml
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store

@@ -1,0 +1,17 @@
+# Keep the build context small and reproducible.
+.git
+.gitignore
+*.md
+Dockerfile
+.dockerignore
+docker-compose.yml
+# Local data / volumes
+data/
+grafana-data/
+# Editor / OS noise
+.idea/
+.vscode/
+.DS_Store
+# Test/build artifacts
+*.test
+*.out

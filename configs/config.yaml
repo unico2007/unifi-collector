@@ -1,0 +1,51 @@
+server:
+  addr: ":8080"
+  read_timeout: 15s
+  write_timeout: 15s
+
+logging:
+  level: info      # debug | info | warn | error
+  format: json     # json | console
+
+unifi:
+  url: "https://10.10.0.3"
+  username: "helpdesk_unico"
+  password: "test"
+  site: "default"
+  verify_tls: false
+  timeout: 10s
+  max_retries: 3
+  auth_failure_cooldown: 60s
+
+loki:
+  enabled: true
+  url: "http://loki:3100/loki/api/v1/push"
+  batch_size: 100
+  batch_wait: 5s
+  # tenant: ""     # optional X-Scope-OrgID for multi-tenant Loki
+
+# Push-based syslog receiver. Point your UniFi controller/devices here
+# (UniFi: Settings -> System -> Remote Logging -> host = docker host IP, port 514).
+# The container listens on 1514 (non-root); docker-compose maps host 514 -> 1514.
+syslog:
+  enabled: true
+  udp_addr: ":1514"
+  # tcp_addr: ":1514"   # optional TCP listener
+  vendor: "unifi"
+  site: "default"
+
+# Per-collector schedule. Add a new key to register a collector without
+# touching any Go struct.
+collectors:
+  devices:
+    enabled: true
+    interval: 30s
+  clients:
+    enabled: true
+    interval: 30s
+  events:
+    enabled: true
+    interval: 10s
+  health:
+    enabled: true
+    interval: 30s

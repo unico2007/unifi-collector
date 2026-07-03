@@ -1,0 +1,81 @@
+services:
+  collector:
+    build:
+      context: .
+      args:
+        VERSION: local
+    image: unifi-collector:local
+    container_name: collector
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      # Syslog: host UDP 514 -> container 1514 (container runs non-root).
+      - "514:1514/udp"
+    volumes:
+      - ./configs/config.yaml:/etc/collector/config.yaml:ro
+    environment:
+      # Override secrets here instead of committing them to config.yaml.
+      # COLLECTOR_UNIFI_URL: "https://192.168.1.1:8443"
+      # COLLECTOR_UNIFI_USERNAME: "admin"
+      # Fail fast if UNIFI_PASSWORD is not set, instead of silently using a
+      # bogus default that gets rejected and can trigger controller lockout.
+      COLLECTOR_UNIFI_PASSWORD: "${UNIFI_PASSWORD:?set UNIFI_PASSWORD to your UniFi password before running docker compose}"
+      COLLECTOR_LOKI_URL: "http://loki:3100/loki/api/v1/push"
+    depends_on:
+      - loki
+    healthcheck:
+      # distroless has no shell/curl, so we probe via the binary's own
+      # -healthcheck flag (does an HTTP GET to /healthz and exits 0/1).
+      test: ["CMD", "/collector", "-healthcheck", "--config", "/etc/collector/config.yaml"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  loki:
+    image: grafana/loki:2.9.8
+    container_name: loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./configs/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      - collector
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: "admin"
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_PASSWORD:-admin}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./configs/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+
+volumes:
+  loki-data:
+  prometheus-data:
+  grafana-data:
