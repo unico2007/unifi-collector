@@ -8,9 +8,11 @@ logging:
   format: json     # json | console
 
 unifi:
-  url: "https://10.10.0.3"
-  username: "helpdesk_unico"
-  password: "test"
+  # Replace with your controller details, or copy this file to
+  # configs/config.local.yaml (gitignored) and keep real values there.
+  url: "https://CONTROLLER_IP"
+  username: "YOUR_USERNAME"
+  password: "YOUR_PASSWORD"
   site: "default"
   verify_tls: false
   timeout: 10s

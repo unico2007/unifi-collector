@@ -12,6 +12,9 @@ coverage.*
 /data/
 /grafana-data/
 
+# Exported log dumps (large runtime data, not source)
+/kerio-logs/
+
 # Local secret/override configs
 configs/config.local.yaml
 *.local.yaml
