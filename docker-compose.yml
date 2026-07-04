@@ -14,9 +14,10 @@ services:
     volumes:
       - ./configs/config.yaml:/etc/collector/config.yaml:ro
     environment:
-      # Override secrets here instead of committing them to config.yaml.
-      # COLLECTOR_UNIFI_URL: "https://192.168.1.1:8443"
-      # COLLECTOR_UNIFI_USERNAME: "admin"
+      # Instance config comes from the .env file (see .env.example), so the
+      # committed config.yaml stays a safe placeholder template.
+      COLLECTOR_UNIFI_URL: "${UNIFI_URL:?set UNIFI_URL to your UniFi controller URL, e.g. https://10.10.0.3}"
+      COLLECTOR_UNIFI_USERNAME: "${UNIFI_USERNAME:?set UNIFI_USERNAME to your UniFi read-only user}"
       # Fail fast if UNIFI_PASSWORD is not set, instead of silently using a
       # bogus default that gets rejected and can trigger controller lockout.
       COLLECTOR_UNIFI_PASSWORD: "${UNIFI_PASSWORD:?set UNIFI_PASSWORD to your UniFi password before running docker compose}"

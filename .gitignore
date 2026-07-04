@@ -18,6 +18,7 @@ coverage.*
 # Local secret/override configs
 configs/config.local.yaml
 *.local.yaml
+.env
 
 # Editor / OS
 .idea/
