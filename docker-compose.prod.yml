@@ -22,6 +22,12 @@ services:
     image: containrrr/watchtower
     container_name: watchtower
     restart: unless-stopped
+    environment:
+      # Credentials Watchtower uses to pull the (private) GHCR image. Set
+      # GHCR_USER / GHCR_TOKEN in .env. Leave them unset if you made the GHCR
+      # package public instead — empty values are simply ignored.
+      REPO_USER: "${GHCR_USER:-}"
+      REPO_PASS: "${GHCR_TOKEN:-}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     # Poll the registry every 60s, only for labelled containers, and clean up
