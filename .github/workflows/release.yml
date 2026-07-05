@@ -1,9 +1,12 @@
 name: Release
 
-# Build and publish the container image to GHCR when a version tag is pushed.
-#   git tag v1.0.0 && git push origin v1.0.0
+# Build and publish the container image to GHCR.
+#   - every push to main  -> ghcr.io/<repo>:latest (+ :sha)   [continuous deploy]
+#   - a version tag v1.2.3 -> :1.2.3 and :1.2                  [pinned release]
+# Watchtower on the server watches :latest and auto-pulls new images.
 on:
   push:
+    branches: [main]
     tags: ["v*"]
 
 permissions:
@@ -29,6 +32,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha

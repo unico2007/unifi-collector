@@ -1,0 +1,29 @@
+# Production override for the company server. It runs the image published to
+# GHCR by CI instead of building from source, and adds Watchtower to auto-pull
+# and restart the collector whenever a new :latest image is pushed.
+#
+# Deploy on the server with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Requires Docker Compose v2.24+ (for `!reset`) and the GHCR package made
+# public (or a `docker login ghcr.io` on the server).
+services:
+  collector:
+    # Drop the source build from the base file and pull the published image.
+    build: !reset null
+    image: ghcr.io/unico2007/unifi-collector:latest
+    pull_policy: always
+    labels:
+      # Only containers with this label are watched (see watchtower --label-enable),
+      # so loki/prometheus/grafana are NOT auto-updated.
+      com.centurylinklabs.watchtower.enable: "true"
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    # Poll the registry every 60s, only for labelled containers, and clean up
+    # the old image after a successful update.
+    command: --interval 60 --cleanup --label-enable
