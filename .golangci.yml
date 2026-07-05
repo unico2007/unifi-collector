@@ -1,27 +1,24 @@
-run:
-  timeout: 5m
-  tests: true
+# golangci-lint v2 config (https://golangci-lint.run)
+version: "2"
 
 linters:
+  # errcheck, govet, ineffassign, staticcheck, unused are enabled by default in v2.
+  # gosimple was merged into staticcheck in v2.
   enable:
-    - errcheck
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
-    - gosimple
+    - bodyclose
     - misspell
-    - revive
+    - nakedret
+    - unconvert
+  exclusions:
+    rules:
+      # Test files may skip some strictness.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - bodyclose
+
+formatters:
+  # gofmt/goimports are formatters (not linters) in v2.
+  enable:
     - gofmt
     - goimports
-    - bodyclose
-    - unconvert
-    - nakedret
-
-issues:
-  exclude-rules:
-    # Test files may skip some strictness.
-    - path: _test\.go
-      linters:
-        - errcheck
-        - bodyclose

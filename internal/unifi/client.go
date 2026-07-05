@@ -230,7 +230,7 @@ func (c *Client) doLogin(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("unifi: login request: %w", err)
 		}
-		func() { defer resp.Body.Close(); io.Copy(io.Discard, resp.Body) }()
+		func() { defer func() { _ = resp.Body.Close() }(); _, _ = io.Copy(io.Discard, resp.Body) }()
 
 		switch {
 		case resp.StatusCode == http.StatusOK:
@@ -299,7 +299,7 @@ func (c *Client) doAPI(ctx context.Context, method, apiPath string, body []byte,
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Capture a refreshed CSRF token if present.
 	if t := resp.Header.Get("X-CSRF-Token"); t != "" {
@@ -378,7 +378,7 @@ func (c *Client) sendWithRetry(ctx context.Context, method, fullURL string, body
 		}
 		if resp.StatusCode >= 500 || (retryTooManyRequests && resp.StatusCode == http.StatusTooManyRequests) {
 			lastErr = fmt.Errorf("unifi: transient status %d", resp.StatusCode)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			continue
 		}
 		return resp, nil

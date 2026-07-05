@@ -118,7 +118,7 @@ func (r *Receiver) serveTCP(ctx context.Context) error {
 
 // handleConn reads newline-delimited syslog lines from a TCP connection.
 func (r *Receiver) handleConn(ctx context.Context, conn net.Conn) {
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	go func() { <-ctx.Done(); _ = conn.Close() }()
 
 	scanner := bufio.NewScanner(conn)

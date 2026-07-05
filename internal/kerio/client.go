@@ -225,7 +225,7 @@ func (c *Client) rawCall(ctx context.Context, method string, params any, token s
 	if err != nil {
 		return nil, err
 	}
-	defer func() { io.Copy(io.Discard, httpResp.Body); httpResp.Body.Close() }()
+	defer func() { _, _ = io.Copy(io.Discard, httpResp.Body); _ = httpResp.Body.Close() }()
 
 	if httpResp.StatusCode >= 400 {
 		return nil, fmt.Errorf("kerio: %s: HTTP %d", method, httpResp.StatusCode)
