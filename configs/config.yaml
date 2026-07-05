@@ -19,6 +19,18 @@ unifi:
   max_retries: 3
   auth_failure_cooldown: 60s
 
+# Optional second vendor: Kerio Control firewall (JSON-RPC admin API on :4081).
+# Disabled by default. Enable it and fill in the values (or override via
+# COLLECTOR_KERIO_* env / .env) to surface its interfaces as devices alongside
+# UniFi in the shared "devices" collector.
+kerio:
+  enabled: false
+  url: "https://KERIO_IP:4081"
+  username: "KERIO_USERNAME"
+  password: "KERIO_PASSWORD"
+  verify_tls: false
+  timeout: 10s
+
 loki:
   enabled: true
   url: "http://loki:3100/loki/api/v1/push"

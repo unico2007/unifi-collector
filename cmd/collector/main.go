@@ -17,6 +17,7 @@ import (
 
 	"github.com/murad/unifi-collector/internal/collector"
 	"github.com/murad/unifi-collector/internal/config"
+	"github.com/murad/unifi-collector/internal/kerio"
 	"github.com/murad/unifi-collector/internal/logger"
 	"github.com/murad/unifi-collector/internal/loki"
 	"github.com/murad/unifi-collector/internal/metrics"
@@ -96,9 +97,28 @@ func run() error {
 		return err
 	}
 
+	// The devices collector reads from UniFi alone, or from UniFi + Kerio
+	// combined when the optional Kerio adapter is enabled. Clients, health and
+	// events remain UniFi-only (Kerio exposes device/interface data only).
+	var deviceSrc collector.DeviceSource = uclient
+	if cfg.Kerio.Enabled {
+		kclient, kerr := kerio.NewClient(kerio.Config{
+			BaseURL:   cfg.Kerio.URL,
+			Username:  cfg.Kerio.Username,
+			Password:  cfg.Kerio.Password,
+			VerifyTLS: cfg.Kerio.VerifyTLS,
+			Timeout:   cfg.Kerio.Timeout,
+		}, log)
+		if kerr != nil {
+			return kerr
+		}
+		deviceSrc = collector.NewMultiDeviceSource(log, uclient, kclient)
+		log.Info("kerio adapter enabled", zap.String("kerio_url", cfg.Kerio.URL))
+	}
+
 	// --- Collectors (registered per config) ----------------------------------
 	reg := collector.NewRegistry()
-	if err := registerCollectors(reg, cfg, uclient, mx, lokiExp, log); err != nil {
+	if err := registerCollectors(reg, cfg, uclient, deviceSrc, mx, lokiExp, log); err != nil {
 		return err
 	}
 
@@ -179,6 +199,7 @@ func registerCollectors(
 	reg *collector.Registry,
 	cfg *config.Config,
 	src *unifi.Client,
+	deviceSrc collector.DeviceSource,
 	mx *metrics.Metrics,
 	lokiExp *loki.Exporter,
 	log *zap.Logger,
@@ -186,7 +207,7 @@ func registerCollectors(
 	enabled := func(name string) bool { return cfg.Collectors[name].Enabled }
 
 	if enabled("devices") {
-		if err := reg.Register(collector.NewDeviceCollector(src, mx, log)); err != nil {
+		if err := reg.Register(collector.NewDeviceCollector(deviceSrc, mx, log)); err != nil {
 			return err
 		}
 	}

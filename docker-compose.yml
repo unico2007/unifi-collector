@@ -22,6 +22,12 @@ services:
       # bogus default that gets rejected and can trigger controller lockout.
       COLLECTOR_UNIFI_PASSWORD: "${UNIFI_PASSWORD:?set UNIFI_PASSWORD to your UniFi password before running docker compose}"
       COLLECTOR_LOKI_URL: "http://loki:3100/loki/api/v1/push"
+      # Optional Kerio Control adapter. Defaults keep it off; set KERIO_ENABLED=true
+      # plus the URL/credentials in .env to collect its interfaces as devices.
+      COLLECTOR_KERIO_ENABLED: "${KERIO_ENABLED:-false}"
+      COLLECTOR_KERIO_URL: "${KERIO_URL:-}"
+      COLLECTOR_KERIO_USERNAME: "${KERIO_USERNAME:-}"
+      COLLECTOR_KERIO_PASSWORD: "${KERIO_PASSWORD:-}"
     depends_on:
       - loki
     healthcheck:

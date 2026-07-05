@@ -16,9 +16,22 @@ type Config struct {
 	Server     ServerConfig               `mapstructure:"server"`
 	Logging    LoggingConfig              `mapstructure:"logging"`
 	UniFi      UniFiConfig                `mapstructure:"unifi"`
+	Kerio      KerioConfig                `mapstructure:"kerio"`
 	Loki       LokiConfig                 `mapstructure:"loki"`
 	Syslog     SyslogConfig               `mapstructure:"syslog"`
 	Collectors map[string]CollectorConfig `mapstructure:"collectors"`
+}
+
+// KerioConfig holds connection settings for an optional Kerio Control firewall
+// (a second vendor). It is only used when Enabled is true; its interfaces are
+// surfaced through the shared "devices" collector alongside UniFi devices.
+type KerioConfig struct {
+	Enabled   bool          `mapstructure:"enabled"`
+	URL       string        `mapstructure:"url"`
+	Username  string        `mapstructure:"username"`
+	Password  string        `mapstructure:"password"`
+	VerifyTLS bool          `mapstructure:"verify_tls"`
+	Timeout   time.Duration `mapstructure:"timeout"`
 }
 
 // SyslogConfig configures the push-based syslog receiver.
@@ -114,6 +127,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("unifi.max_retries", 3)
 	v.SetDefault("unifi.auth_failure_cooldown", time.Minute)
 
+	v.SetDefault("kerio.enabled", false)
+	v.SetDefault("kerio.verify_tls", false)
+	v.SetDefault("kerio.timeout", 10*time.Second)
+
 	v.SetDefault("loki.enabled", true)
 	v.SetDefault("loki.batch_size", 100)
 	v.SetDefault("loki.batch_wait", 5*time.Second)
@@ -130,6 +147,14 @@ func (c *Config) validate() error {
 	}
 	if c.UniFi.Username == "" || c.UniFi.Password == "" {
 		return fmt.Errorf("config: unifi.username and unifi.password are required")
+	}
+	if c.Kerio.Enabled {
+		if c.Kerio.URL == "" {
+			return fmt.Errorf("config: kerio.url is required when kerio is enabled")
+		}
+		if c.Kerio.Username == "" || c.Kerio.Password == "" {
+			return fmt.Errorf("config: kerio.username and kerio.password are required when kerio is enabled")
+		}
 	}
 	if c.Loki.Enabled && c.Loki.URL == "" {
 		return fmt.Errorf("config: loki.url is required when loki is enabled")
