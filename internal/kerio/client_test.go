@@ -28,8 +28,8 @@ func mockKerio(t *testing.T) *httptest.Server {
 				return
 			}
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":2,"result":{"list":[
-				{"name":"WAN","type":"Ethernet","enabled":true,"status":"Up","ip":"10.10.0.2"},
-				{"name":"Guest","type":"Ethernet","enabled":true,"status":"Down","ip":""}
+				{"name":"WAN","type":"Ethernet","enabled":true,"linkStatus":"Up","ip":"10.10.0.2","mac":"aa-bb-cc-dd-ee-ff"},
+				{"name":"Guest","type":"Ethernet","enabled":true,"linkStatus":"Down","ip":""}
 			]}}`))
 		default:
 			w.Write([]byte(`{"jsonrpc":"2.0","id":0,"error":{"code":-1,"message":"unknown method"}}`))
@@ -65,6 +65,9 @@ func TestClient_LoginAndDevices(t *testing.T) {
 	}
 	if devices[0].Labels["iface_type"] != "Ethernet" {
 		t.Errorf("iface_type label = %q, want Ethernet", devices[0].Labels["iface_type"])
+	}
+	if devices[0].MAC != "aa-bb-cc-dd-ee-ff" {
+		t.Errorf("WAN MAC = %q, want aa-bb-cc-dd-ee-ff", devices[0].MAC)
 	}
 }
 

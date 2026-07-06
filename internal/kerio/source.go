@@ -2,12 +2,9 @@ package kerio
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 
 	"github.com/murad/unifi-collector/internal/collector"
 	"github.com/murad/unifi-collector/internal/models"
-	"go.uber.org/zap"
 )
 
 // Compile-time proof that *Client satisfies the DeviceSource capability. Kerio
@@ -19,18 +16,17 @@ var _ collector.DeviceSource = (*Client)(nil)
 // Name identifies this vendor adapter.
 func (c *Client) Name() string { return "kerio" }
 
-// rawInterface mirrors an entry from Interfaces.get.
-//
-// NOTE: these JSON field names are a best-effort starting point. Confirm them
-// against a real Interfaces.get response (browser DevTools on the Kerio admin,
-// or `scripts/` discovery) and adjust — the mapping is the only vendor-specific
-// part that needs the live device.
+// rawInterface mirrors an entry from Interfaces.get. Field names verified
+// against a live Kerio Control response: link connectivity is reported by
+// `linkStatus` ("Up"/"Down"); the `status` field is a config-store state
+// ("StoreStatusClean", ...) and must NOT be used for up/down.
 type rawInterface struct {
-	Name    string `json:"name"`
-	Type    string `json:"type"`    // e.g. "Ethernet", "VPNTunnel"
-	Enabled bool   `json:"enabled"` // administratively up
-	Status  string `json:"status"`  // e.g. "Up" / "Down"
-	IP      string `json:"ip"`
+	Name       string `json:"name"`
+	Type       string `json:"type"`       // e.g. "Ethernet", "VPNTunnel"
+	Enabled    bool   `json:"enabled"`    // administratively enabled
+	LinkStatus string `json:"linkStatus"` // link connectivity: "Up" / "Down"
+	IP         string `json:"ip"`
+	MAC        string `json:"mac"`
 }
 
 type interfacesResult struct {
@@ -49,29 +45,22 @@ func (c *Client) Devices(ctx context.Context) ([]models.Device, error) {
 		},
 	}
 
-	// TEMP DEBUG: capture the raw Interfaces.get result so we can see Kerio's
-	// real field names and fix the rawInterface mapping. Remove after fixing.
-	var raw json.RawMessage
-	if err := c.call(ctx, "Interfaces.get", params, &raw); err != nil {
-		return nil, err
-	}
-	c.log.Info("kerio Interfaces.get raw (temp debug)", zap.ByteString("raw", raw))
-
 	var res interfacesResult
-	if err := json.Unmarshal(raw, &res); err != nil {
-		return nil, fmt.Errorf("kerio: decoding interfaces: %w", err)
+	if err := c.call(ctx, "Interfaces.get", params, &res); err != nil {
+		return nil, err
 	}
 
 	out := make([]models.Device, 0, len(res.List))
 	for _, i := range res.List {
 		state := "offline"
-		if i.Status == "Up" || (i.Status == "" && i.Enabled) {
+		if i.LinkStatus == "Up" || (i.LinkStatus == "" && i.Enabled) {
 			state = "online"
 		}
 		out = append(out, models.Device{
 			Vendor:  c.Name(),
 			ID:      i.Name,
 			Name:    i.Name,
+			MAC:     i.MAC,
 			Type:    "interface",
 			IP:      i.IP,
 			State:   state,
