@@ -20,6 +20,9 @@ configs/config.local.yaml
 *.local.yaml
 .env
 
+# Local AI/handoff context doc (not for the public repo)
+PROJECT_CONTEXT.md
+
 # Editor / OS
 .idea/
 .vscode/

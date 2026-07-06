@@ -2,9 +2,12 @@ package kerio
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 
 	"github.com/murad/unifi-collector/internal/collector"
 	"github.com/murad/unifi-collector/internal/models"
+	"go.uber.org/zap"
 )
 
 // Compile-time proof that *Client satisfies the DeviceSource capability. Kerio
@@ -46,9 +49,17 @@ func (c *Client) Devices(ctx context.Context) ([]models.Device, error) {
 		},
 	}
 
-	var res interfacesResult
-	if err := c.call(ctx, "Interfaces.get", params, &res); err != nil {
+	// TEMP DEBUG: capture the raw Interfaces.get result so we can see Kerio's
+	// real field names and fix the rawInterface mapping. Remove after fixing.
+	var raw json.RawMessage
+	if err := c.call(ctx, "Interfaces.get", params, &raw); err != nil {
 		return nil, err
+	}
+	c.log.Info("kerio Interfaces.get raw (temp debug)", zap.ByteString("raw", raw))
+
+	var res interfacesResult
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return nil, fmt.Errorf("kerio: decoding interfaces: %w", err)
 	}
 
 	out := make([]models.Device, 0, len(res.List))
