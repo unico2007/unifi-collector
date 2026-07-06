@@ -62,11 +62,52 @@ async function get<T>(path: string, mock: T): Promise<T> {
   }
 }
 
+export interface Traffic {
+  rx: number[];
+  tx: number[];
+  totalRx: string;
+  totalTx: string;
+  topTalkers: { label: string; value: number; sub?: string }[];
+  perAp: { label: string; value: number }[];
+}
+
+export interface Wifi {
+  rssiBins: number[];
+  rssiLabels: string[];
+  clientsPerAp: { label: string; value: number }[];
+  bandSplit: { label: string; value: number }[];
+  vlanSplit: { label: string; value: number }[];
+  quality: { good: number; fair: number; poor: number };
+}
+
+export interface Firewall {
+  allow: number[];
+  deny: number[];
+  blockedToday: number;
+  topBlockedIps: { label: string; value: number; sub?: string }[];
+  topRules: { label: string; value: number }[];
+  webCategories: { label: string; value: number }[];
+  attacks: { time: string; type: string; source: string; action: string }[];
+}
+
+export interface DeviceDetail {
+  device: Device;
+  cpu: number[];
+  memory: number[];
+  rx: number[];
+  tx: number[];
+  clients: { name: string; mac: string; rssi: number; rx: string; tx: string }[];
+}
+
 export const api = {
   overview: () => get<Overview>("/overview", mockOverview),
   devices: () => get<Device[]>("/devices", mockDevices),
   clients: () => get<Client[]>("/clients", mockClients),
   logCategories: () => get<LogCategory[]>("/logs/categories", mockCategories),
+  traffic: () => get<Traffic>("/traffic", mockTraffic),
+  wifi: () => get<Wifi>("/wifi", mockWifi),
+  firewall: () => get<Firewall>("/firewall", mockFirewall),
+  device: (name: string) => get<DeviceDetail>(`/devices/${encodeURIComponent(name)}`, mockDeviceDetail(name)),
   login: async (username: string, password: string, role: string) => {
     const r = await fetch("/api/login", {
       method: "POST",
@@ -210,4 +251,93 @@ function genRows(v: Vendor) {
     ["12:02:33", pill("error", "no"), "gateway", "WAN gecikməsi 240ms"],
     ["12:00:11", pill("warn", "warn"), "system", "Yaddaş istifadəsi 82%"],
   ];
+}
+
+function wave(n: number, base: number, amp: number, seed = 1) {
+  return Array.from({ length: n }, (_, i) =>
+    Math.max(0, Math.round(base + amp * Math.sin(i / 2 + seed) + amp * 0.4 * Math.sin(i / 5 + seed * 2))),
+  );
+}
+
+const mockTraffic: Traffic = {
+  rx: wave(24, 340, 120, 1),
+  tx: wave(24, 120, 60, 3),
+  totalRx: "1.9 TB",
+  totalTx: "612 GB",
+  topTalkers: [
+    { label: "k.huseynov-pc", value: 128, sub: "GB" },
+    { label: "AP-Ofis-1", value: 96, sub: "GB" },
+    { label: "a.mammadov-mbp", value: 74, sub: "GB" },
+    { label: "Guest-2f1a", value: 41, sub: "GB" },
+    { label: "r.aliyeva-iphone", value: 28, sub: "GB" },
+  ],
+  perAp: [
+    { label: "AP-Ofis-1", value: 620 },
+    { label: "AP-Ofis-2", value: 410 },
+    { label: "AP-Zirzəmi", value: 0 },
+  ],
+};
+
+const mockWifi: Wifi = {
+  rssiBins: [4, 9, 22, 41, 38, 24, 11, 5],
+  rssiLabels: ["-90", "-80", "-75", "-70", "-65", "-60", "-55", "-45"],
+  clientsPerAp: [
+    { label: "AP-Ofis-1", value: 82 },
+    { label: "AP-Ofis-2", value: 61 },
+    { label: "AP-Zirzəmi", value: 11 },
+  ],
+  bandSplit: [
+    { label: "5 GHz", value: 108 },
+    { label: "2.4 GHz", value: 46 },
+  ],
+  vlanSplit: [
+    { label: "VLAN 10 (Ofis)", value: 96 },
+    { label: "VLAN 20 (IT)", value: 34 },
+    { label: "VLAN 90 (Qonaq)", value: 24 },
+  ],
+  quality: { good: 118, fair: 27, poor: 9 },
+};
+
+const mockFirewall: Firewall = {
+  allow: wave(24, 820, 260, 2),
+  deny: wave(24, 140, 90, 5),
+  blockedToday: 3412,
+  topBlockedIps: [
+    { label: "45.148.10.2", value: 842, sub: "RU" },
+    { label: "193.32.162.9", value: 511, sub: "NL" },
+    { label: "185.34.9.7", value: 388, sub: "DE" },
+    { label: "89.20.11.4", value: 240, sub: "RU" },
+  ],
+  topRules: [
+    { label: "Block-RDP", value: 1204 },
+    { label: "Block-SSH-WAN", value: 902 },
+    { label: "Drop-Ping-WAN", value: 640 },
+    { label: "Block-Telnet", value: 311 },
+  ],
+  webCategories: [
+    { label: "Social", value: 420 },
+    { label: "Media", value: 388 },
+    { label: "Gambling", value: 96 },
+    { label: "Malware", value: 22 },
+  ],
+  attacks: [
+    { time: "12:03:10", type: "Port scan", source: "45.148.10.2", action: "Deny" },
+    { time: "11:51:40", type: "Brute force (SSH)", source: "193.32.162.9", action: "Deny" },
+    { time: "11:22:05", type: "Spoofed source", source: "185.34.9.7", action: "Deny" },
+  ],
+};
+
+function mockDeviceDetail(name: string): DeviceDetail {
+  const d = mockDevices.find((x) => x.name === name) ?? mockDevices[0];
+  return {
+    device: d,
+    cpu: wave(24, d.cpu || 6, 8, 1),
+    memory: wave(24, d.memory || 30, 10, 2),
+    rx: wave(24, 40, 25, 3),
+    tx: wave(24, 14, 10, 4),
+    clients: [
+      { name: "a.mammadov-mbp", mac: "3c:22:fb:aa:01", rssi: -48, rx: "22 Mbps", tx: "8 Mbps" },
+      { name: "k.huseynov-pc", mac: "d8:cb:8a:cc:03", rssi: -72, rx: "6 Mbps", tx: "1 Mbps" },
+    ],
+  };
 }

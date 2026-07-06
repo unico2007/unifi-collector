@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { api, Device } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
@@ -70,7 +71,9 @@ export default function DevicesPage() {
           <tbody>
             {rows.map((d) => (
               <tr key={d.name} className="odd:bg-page/60 hover:bg-page">
-                <td className="px-3 py-2 border-b border-line font-medium">{d.name}</td>
+                <td className="px-3 py-2 border-b border-line font-medium">
+                  <Link to={`/devices/${encodeURIComponent(d.name)}`} className="text-brand-600 hover:underline">{d.name}</Link>
+                </td>
                 <td className="px-3 py-2 border-b border-line"><VendorBadge v={d.vendor} /></td>
                 <td className="px-3 py-2 border-b border-line text-muted">{d.type}</td>
                 <td className="px-3 py-2 border-b border-line font-mono text-xs">{d.ip}</td>

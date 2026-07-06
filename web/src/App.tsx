@@ -4,8 +4,12 @@ import AppLayout from "./components/AppLayout";
 import LoginPage from "./pages/LoginPage";
 import OverviewPage from "./pages/OverviewPage";
 import DevicesPage from "./pages/DevicesPage";
+import DeviceDetailPage from "./pages/DeviceDetailPage";
 import ClientsPage from "./pages/ClientsPage";
 import LogsPage from "./pages/LogsPage";
+import TrafficPage from "./pages/TrafficPage";
+import WifiPage from "./pages/WifiPage";
+import FirewallPage from "./pages/FirewallPage";
 
 export default function App() {
   const { user } = useAuth();
@@ -23,8 +27,12 @@ export default function App() {
     <AppLayout>
       <Routes>
         <Route path="/" element={<OverviewPage />} />
+        <Route path="/traffic" element={<TrafficPage />} />
+        <Route path="/wifi" element={<WifiPage />} />
         <Route path="/devices" element={<DevicesPage />} />
+        <Route path="/devices/:name" element={<DeviceDetailPage />} />
         <Route path="/clients" element={<ClientsPage />} />
+        <Route path="/firewall" element={<FirewallPage />} />
         <Route path="/logs" element={<LogsPage />} />
         <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
