@@ -14,7 +14,7 @@ services:
       AI_PROMETHEUS_URL: "http://prometheus:9090"
       AI_LOKI_URL: "http://loki:3100"
       AI_OLLAMA_URL: "http://host.docker.internal:11434"
-      AI_OLLAMA_MODEL: "${AI_MODEL:-llama3.2:3b}"
+      AI_OLLAMA_MODEL: "${AI_MODEL:-qwen2.5:7b}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

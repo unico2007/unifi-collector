@@ -12,7 +12,9 @@ class Settings(BaseSettings):
 
     # Local LLM via Ollama. Swap the model to scale up on a bigger GPU later.
     ollama_url: str = "http://host.docker.internal:11434"
-    ollama_model: str = "llama3.2:3b"
+    # qwen2.5:7b fits a 6 GB GPU and is much better at Azerbaijani + PromQL/JSON.
+    # Fall back to llama3.2:3b on a smaller GPU via AI_OLLAMA_MODEL.
+    ollama_model: str = "qwen2.5:7b"
 
     # Guardrails for LLM-generated queries.
     max_range: str = "24h"      # cap the time range the agent may query
