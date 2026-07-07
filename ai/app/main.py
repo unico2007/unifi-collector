@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from .config import settings
 from .clients import prom, loki, llm
 from . import agent
+from . import insights
 
 app = FastAPI(title="Unico AI service", version="0.1.0")
 app.add_middleware(
@@ -40,6 +41,13 @@ async def health():
 @app.post("/ai/chat")
 async def chat(body: ChatIn):
     return await agent.chat(body.question)
+
+
+@app.get("/ai/insights")
+async def ai_insights():
+    """Phase-2 automatic analysis: anomalies + forecasts over unifi_* metrics,
+    with a short Azerbaijani synthesis. Powers the Overview 'AI Insights' panel."""
+    return await insights.compute()
 
 
 @app.get("/ai/summary")

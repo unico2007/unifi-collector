@@ -106,6 +106,18 @@ export interface AiChat {
   result?: string;
 }
 
+export interface AiInsight {
+  level: "info" | "warn" | "error";
+  title: string;
+  detail: string;
+}
+
+export interface AiInsights {
+  insights: AiInsight[];
+  summary: string;
+  generated_at: number;
+}
+
 export const api = {
   overview: () => get<Overview>("/overview", mockOverview),
   devices: () => get<Device[]>("/devices", mockDevices),
@@ -138,6 +150,21 @@ export const api = {
     } catch {
       // Offline/dev fallback so the page stays browsable without the AI service.
       return mockAiChat(question);
+    }
+  },
+  aiInsights: async (): Promise<AiInsights> => {
+    try {
+      const r = await fetch("/api/ai/insights", { credentials: "include" });
+      if (!r.ok) throw new Error(String(r.status));
+      return (await r.json()) as AiInsights;
+    } catch {
+      return {
+        insights: [
+          { level: "info", title: "AI Insights", detail: "AI servisi qoşulanda anomaliya və proqnozlar burada avtomatik görünəcək (demo)." },
+        ],
+        summary: "",
+        generated_at: 0,
+      };
     }
   },
   aiSummary: async (): Promise<string> => {

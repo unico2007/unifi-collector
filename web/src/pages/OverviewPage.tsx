@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, Overview } from "../lib/api";
+import { api, Overview, AiInsights, AiInsight } from "../lib/api";
 
 function Kpi({ label, value, sub, tone }: { label: string; value: string; sub: string; tone?: string }) {
   return (
@@ -50,6 +50,50 @@ const levelPill: Record<string, string> = {
   error: "bg-red-50 text-red-700",
 };
 
+const insightAccent: Record<string, string> = {
+  info: "border-l-slate-300",
+  warn: "border-l-amber-400",
+  error: "border-l-red-400",
+};
+
+function InsightIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+      <path d="M12 3l1.9 4.8L18 9l-4.1 1.2L12 15l-1.9-4.8L6 9l4.1-1.2zM19 14l.9 2.1L22 17l-2.1.9L19 20l-.9-2.1L16 17l2.1-.9z" />
+    </svg>
+  );
+}
+
+function AiInsightsPanel() {
+  const [d, setD] = useState<AiInsights | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    api.aiInsights().then(setD).finally(() => setLoading(false));
+  }, []);
+  return (
+    <div className="card p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="w-7 h-7 rounded-lg bg-brand-500 text-white grid place-items-center"><InsightIcon /></span>
+        <span className="text-sm font-medium">AI Insights</span>
+        <span className="text-xs text-muted ml-auto">avtomatik təhlil</span>
+      </div>
+      {loading && <div className="text-sm text-muted">Təhlil edilir...</div>}
+      {d?.summary && <div className="text-sm text-ink/80 mb-3">{d.summary}</div>}
+      <div className="space-y-2">
+        {d?.insights.map((it: AiInsight, i) => (
+          <div key={i} className={`border-l-2 ${insightAccent[it.level]} pl-3 py-0.5`}>
+            <div className="flex items-center gap-2">
+              <span className={`pill ${levelPill[it.level]}`}>{it.level}</span>
+              <span className="text-sm font-medium">{it.title}</span>
+            </div>
+            <div className="text-xs text-muted mt-0.5">{it.detail}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function OverviewPage() {
   const [d, setD] = useState<Overview | null>(null);
   useEffect(() => {
@@ -65,6 +109,8 @@ export default function OverviewPage() {
         <Kpi label="Sağlamlıq" value={`${d.health}%`} sub="sistem" tone="text-green-600" />
         <Kpi label="Xəbərdarlıqlar" value={String(d.alerts)} sub="aktiv" tone="text-amber-600" />
       </div>
+
+      <AiInsightsPanel />
 
       <div className="grid lg:grid-cols-3 gap-4">
         <div className="card p-4 lg:col-span-2">
