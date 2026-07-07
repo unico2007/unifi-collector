@@ -42,6 +42,7 @@ type Client struct {
 	IP          string
 	ConnectedAP string // MAC or name of the AP/switch the client is attached to
 	VLAN        string
+	Band        string // "2.4 GHz", "5 GHz", "6 GHz" for wireless; "" for wired
 
 	RSSI          float64
 	TxRate        float64 // bits/s

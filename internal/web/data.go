@@ -162,7 +162,7 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 			Vendor: in.labels["vendor"],
 			Type:   in.labels["type"],
 			Model:  in.labels["model"],
-			IP:     "-", // not exported as a metric label
+			IP:     ipOrDash(in.labels["ip"]),
 			MAC:    mac,
 			State:  state,
 			CPU:    cpu[mac],
@@ -184,6 +184,7 @@ func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 	rx := s.byMAC(ctx, `unifi_client_rx_rate`)
 	tx := s.byMAC(ctx, `unifi_client_tx_rate`)
 	conn := s.byMAC(ctx, `unifi_client_connected_seconds`)
+	names := s.apNames(ctx)
 
 	out := make([]clientDTO, 0, len(rssi))
 	for _, c := range rssi {
@@ -191,7 +192,7 @@ func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 		out = append(out, clientDTO{
 			Name:  c.labels["name"],
 			MAC:   mac,
-			AP:    c.labels["ap"],
+			AP:    apLabel(names, c.labels["ap"]),
 			VLAN:  c.labels["vlan"],
 			RSSI:  c.value,
 			Rx:    formatRate(rx[mac]),
@@ -201,6 +202,31 @@ func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// apNames maps device MAC -> friendly name. The client "ap" label holds the
+// AP/switch MAC (ap_mac/sw_mac); this lets us show a readable device name
+// instead of a raw MAC across the clients, WiFi and device-detail views.
+func (s *Server) apNames(ctx context.Context) map[string]string {
+	m := map[string]string{}
+	rows, err := s.prom.query(ctx, `unifi_device_info`)
+	if err != nil {
+		return m
+	}
+	for _, r := range rows {
+		if mac := r.labels["mac"]; mac != "" && r.labels["name"] != "" {
+			m[mac] = r.labels["name"]
+		}
+	}
+	return m
+}
+
+// apLabel translates an ap MAC to a device name, falling back to the MAC.
+func apLabel(names map[string]string, ap string) string {
+	if n, ok := names[ap]; ok {
+		return n
+	}
+	return ap
 }
 
 // byMAC runs a query and indexes the scalar values by the "mac" label.
@@ -214,6 +240,13 @@ func (s *Server) byMAC(ctx context.Context, expr string) map[string]float64 {
 		m[r.labels["mac"]] = r.value
 	}
 	return m
+}
+
+func ipOrDash(ip string) string {
+	if ip == "" {
+		return "-"
+	}
+	return ip
 }
 
 func formatUptime(seconds float64) string {

@@ -20,7 +20,36 @@ type rawClient struct {
 	TxRate   float64 `json:"tx_rate"` // kbps
 	RxRate   float64 `json:"rx_rate"` // kbps
 	VLAN     int     `json:"vlan"`
-	Uptime   int64   `json:"uptime"` // seconds connected
+	Uptime   int64   `json:"uptime"`   // seconds connected
+	Radio    string  `json:"radio"`    // "ng"=2.4GHz, "na"=5GHz, "6e"=6GHz
+	Channel  int     `json:"channel"`  // radio channel (fallback for band)
+	IsWired  bool    `json:"is_wired"` // true for wired clients (no band)
+}
+
+// wifiBand derives a human band label from the station's radio/channel. Returns
+// "" for wired clients (they have no radio band).
+func wifiBand(radio string, channel int, wired bool) string {
+	if wired {
+		return ""
+	}
+	switch radio {
+	case "ng":
+		return "2.4 GHz"
+	case "na":
+		return "5 GHz"
+	case "6e", "6g":
+		return "6 GHz"
+	}
+	switch {
+	case channel == 0:
+		return ""
+	case channel <= 14:
+		return "2.4 GHz"
+	case channel >= 32 && channel <= 177:
+		return "5 GHz"
+	default:
+		return "6 GHz"
+	}
 }
 
 // Clients implements collector.ClientSource.
@@ -52,6 +81,7 @@ func (c *Client) Clients(ctx context.Context) ([]models.Client, error) {
 			IP:          cl.IP,
 			ConnectedAP: ap,
 			VLAN:        strconv.Itoa(cl.VLAN),
+			Band:        wifiBand(cl.Radio, cl.Channel, cl.IsWired),
 			RSSI:        cl.RSSI,
 			// UniFi reports negotiated rates in kbps; normalize to bits/s.
 			TxRate:        cl.TxRate * 1000,

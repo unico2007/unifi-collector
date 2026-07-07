@@ -21,9 +21,9 @@ const frameworkNamespace = "collector"
 // Label sets. Order matters for the WithLabelValues calls below.
 var (
 	deviceLabels      = []string{"vendor", "site", "mac", "name", "model", "type"}
-	deviceInfoLabels  = []string{"vendor", "site", "mac", "name", "model", "type", "version", "state"}
+	deviceInfoLabels  = []string{"vendor", "site", "mac", "name", "model", "type", "version", "state", "ip"}
 	devicesTotalLabel = []string{"vendor", "site", "type"}
-	clientLabels      = []string{"vendor", "site", "mac", "name", "ap", "vlan"}
+	clientLabels      = []string{"vendor", "site", "mac", "name", "ap", "vlan", "band"}
 	clientsTotalLabel = []string{"vendor", "site"}
 	healthLabels      = []string{"vendor", "site", "subsystem"}
 	scrapeLabels      = []string{"collector"}
@@ -154,7 +154,7 @@ func (m *Metrics) RecordDevices(devices []models.Device) {
 		m.deviceUptime.WithLabelValues(lv...).Set(d.Uptime.Seconds())
 		m.deviceRxBytes.WithLabelValues(lv...).Set(d.RxBytes)
 		m.deviceTxBytes.WithLabelValues(lv...).Set(d.TxBytes)
-		m.deviceInfo.WithLabelValues(d.Vendor, d.Site, d.MAC, d.Name, d.Model, d.Type, d.Version, d.State).Set(1)
+		m.deviceInfo.WithLabelValues(d.Vendor, d.Site, d.MAC, d.Name, d.Model, d.Type, d.Version, d.State, d.IP).Set(1)
 
 		byType[[3]string{d.Vendor, d.Site, d.Type}]++
 	}
@@ -173,7 +173,7 @@ func (m *Metrics) RecordClients(clients []models.Client) {
 
 	bySite := map[[2]string]int{}
 	for _, c := range clients {
-		lv := []string{c.Vendor, c.Site, c.MAC, c.Name, c.ConnectedAP, c.VLAN}
+		lv := []string{c.Vendor, c.Site, c.MAC, c.Name, c.ConnectedAP, c.VLAN, c.Band}
 		m.clientRSSI.WithLabelValues(lv...).Set(c.RSSI)
 		m.clientTxRate.WithLabelValues(lv...).Set(c.TxRate)
 		m.clientRxRate.WithLabelValues(lv...).Set(c.RxRate)

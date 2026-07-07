@@ -42,7 +42,7 @@ func (s *Server) handleDeviceDetail(w http.ResponseWriter, r *http.Request) {
 		Vendor: in.labels["vendor"],
 		Type:   in.labels["type"],
 		Model:  in.labels["model"],
-		IP:     "-",
+		IP:     ipOrDash(in.labels["ip"]),
 		MAC:    mac,
 		State:  in.labels["state"],
 	}
@@ -62,9 +62,10 @@ func (s *Server) handleDeviceDetail(w http.ResponseWriter, r *http.Request) {
 	d.Rx = toMbps(mustSeries(s.prom.rangeSeries(ctx, `rate(unifi_device_rx_bytes`+sel+`[5m])`, 24*time.Hour, time.Hour)))
 	d.Tx = toMbps(mustSeries(s.prom.rangeSeries(ctx, `rate(unifi_device_tx_bytes`+sel+`[5m])`, 24*time.Hour, time.Hour)))
 
-	// Clients associated with this AP.
+	// Clients associated with this AP. The client "ap" label holds the AP's
+	// MAC, so match on the device MAC rather than its name.
 	d.Clients = []detailClient{}
-	clientSel := fmt.Sprintf(`{ap="%s"}`, escapeLabel(name))
+	clientSel := fmt.Sprintf(`{ap="%s"}`, escapeLabel(mac))
 	if rows, e := s.prom.query(ctx, `unifi_client_rssi`+clientSel); e == nil {
 		rx := s.byMAC(ctx, `unifi_client_rx_rate`+clientSel)
 		tx := s.byMAC(ctx, `unifi_client_tx_rate`+clientSel)

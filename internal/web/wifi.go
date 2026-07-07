@@ -33,17 +33,18 @@ func (s *Server) handleWifi(w http.ResponseWriter, r *http.Request) {
 	var d wifiDTO
 	d.RSSILabels = rssiBinLabels
 	d.RSSIBins = make([]int, len(rssiBinLabels))
-	d.BandSplit = []kv{} // no radio/band label is exported yet -> no data
 
 	clients, err := s.prom.query(ctx, `unifi_client_rssi`)
 	if err != nil {
-		d.ClientsPerAp, d.VLANSplit = []kv{}, []kv{}
+		d.ClientsPerAp, d.VLANSplit, d.BandSplit = []kv{}, []kv{}, []kv{}
 		writeJSON(w, http.StatusOK, d)
 		return
 	}
+	names := s.apNames(ctx)
 
 	perAp := map[string]float64{}
 	perVlan := map[string]float64{}
+	perBand := map[string]float64{}
 	for _, c := range clients {
 		rssi := c.value
 		// histogram
@@ -63,15 +64,19 @@ func (s *Server) handleWifi(w http.ResponseWriter, r *http.Request) {
 			d.Quality.Poor++
 		}
 		if ap := c.labels["ap"]; ap != "" {
-			perAp[ap]++
+			perAp[apLabel(names, ap)]++
 		}
 		if vlan := c.labels["vlan"]; vlan != "" {
 			perVlan[vlan]++
+		}
+		if band := c.labels["band"]; band != "" {
+			perBand[band]++
 		}
 	}
 
 	d.ClientsPerAp = sortedKV(perAp, "")
 	d.VLANSplit = sortedKV(perVlan, "VLAN ")
+	d.BandSplit = sortedKV(perBand, "")
 	writeJSON(w, http.StatusOK, d)
 }
 
