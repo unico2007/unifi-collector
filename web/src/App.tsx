@@ -10,6 +10,7 @@ import LogsPage from "./pages/LogsPage";
 import TrafficPage from "./pages/TrafficPage";
 import WifiPage from "./pages/WifiPage";
 import FirewallPage from "./pages/FirewallPage";
+import AiChatPage from "./pages/AiChatPage";
 
 export default function App() {
   const { user } = useAuth();
@@ -34,6 +35,7 @@ export default function App() {
         <Route path="/clients" element={<ClientsPage />} />
         <Route path="/firewall" element={<FirewallPage />} />
         <Route path="/logs" element={<LogsPage />} />
+        <Route path="/ai" element={<AiChatPage />} />
         <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

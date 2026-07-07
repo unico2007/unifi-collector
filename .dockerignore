@@ -8,6 +8,11 @@ docker-compose.yml
 # Local data / volumes
 data/
 grafana-data/
+# Frontend deps/build artifacts (rebuilt inside the image)
+web/node_modules/
+web/dist/
+bin/
+*.zip
 # Editor / OS noise
 .idea/
 .vscode/

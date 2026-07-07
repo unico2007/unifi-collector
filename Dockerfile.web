@@ -1,0 +1,41 @@
+# syntax=docker/dockerfile:1
+# Unico BFF: builds the React frontend and the Go BFF, ships both in one
+# distroless image. The BFF serves the built SPA and exposes /api/*.
+
+# ---- Frontend build -------------------------------------------------------
+FROM node:20-alpine AS web
+WORKDIR /web
+COPY web/package.json web/package-lock.json* ./
+RUN npm install
+COPY web/ ./
+RUN npm run build   # -> /web/dist
+
+# ---- Go build -------------------------------------------------------------
+FROM golang:1.25 AS builder
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=linux go build \
+        -trimpath \
+        -ldflags="-s -w -X main.version=${VERSION}" \
+        -o /out/web ./cmd/web
+
+# Writable data dir owned by the nonroot uid, so a fresh named volume mounted
+# here inherits writable ownership (Docker seeds empty volumes from the image).
+RUN mkdir -p /data && chown 65532:65532 /data
+
+# ---- Runtime --------------------------------------------------------------
+FROM gcr.io/distroless/static:nonroot
+COPY --from=builder /out/web /web
+COPY --from=web /web/dist /web-dist
+COPY --from=builder --chown=65532:65532 /data /data
+
+ENV WEB_ADDR=":8080" \
+    WEB_STATIC_DIR="/web-dist" \
+    WEB_DB="/data/users.db"
+
+EXPOSE 8080
+USER nonroot:nonroot
+ENTRYPOINT ["/web"]

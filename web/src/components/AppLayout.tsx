@@ -7,6 +7,7 @@ const groups = [
     name: "Ümumi",
     items: [
       { to: "/", label: "Ümumi baxış", icon: "grid" },
+      { to: "/ai", label: "AI köməkçi", icon: "spark" },
       { to: "/traffic", label: "Trafik", icon: "activity" },
       { to: "/wifi", label: "WiFi analitika", icon: "wifi" },
     ],
@@ -29,6 +30,7 @@ const groups = [
 
 const titles: Record<string, string> = {
   "/": "Ümumi baxış",
+  "/ai": "AI köməkçi",
   "/traffic": "Trafik",
   "/wifi": "WiFi analitika",
   "/devices": "Cihazlar",
@@ -49,6 +51,7 @@ function Icon({ name, className = "w-5 h-5" }: { name: string; className?: strin
     activity: "M22 12h-4l-3 9L9 3l-3 9H2",
     wifi: "M5 12.55a11 11 0 0 1 14.08 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01",
     shield: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
+    spark: "M12 3l1.9 4.8L18 9l-4.1 1.2L12 15l-1.9-4.8L6 9l4.1-1.2zM19 14l.9 2.1L22 17l-2.1.9L19 20l-.9-2.1L16 17l2.1-.9z",
   };
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>

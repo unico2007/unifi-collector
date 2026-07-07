@@ -99,6 +99,13 @@ export interface DeviceDetail {
   clients: { name: string; mac: string; rssi: number; rx: string; tx: string }[];
 }
 
+export interface AiChat {
+  answer: string;
+  source: "prometheus" | "loki" | "";
+  query: string;
+  result?: string;
+}
+
 export const api = {
   overview: () => get<Overview>("/overview", mockOverview),
   devices: () => get<Device[]>("/devices", mockDevices),
@@ -118,7 +125,41 @@ export const api = {
     if (!r.ok) throw new Error("auth");
     return (await r.json()) as { username: string; role: "admin" | "guest" };
   },
+  aiChat: async (question: string): Promise<AiChat> => {
+    try {
+      const r = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ question }),
+      });
+      if (!r.ok) throw new Error(String(r.status));
+      return (await r.json()) as AiChat;
+    } catch {
+      // Offline/dev fallback so the page stays browsable without the AI service.
+      return mockAiChat(question);
+    }
+  },
+  aiSummary: async (): Promise<string> => {
+    try {
+      const r = await fetch("/api/ai/summary", { credentials: "include" });
+      if (!r.ok) throw new Error(String(r.status));
+      return ((await r.json()) as { summary: string }).summary;
+    } catch {
+      return "Son 24 saatda 2 error, 3 xəbərdarlıq qeydə alınıb. Ən çox WAN gecikməsi ilə bağlıdır (demo).";
+    }
+  },
 };
+
+// Canned answers so the AI page is demonstrable without the live service.
+function mockAiChat(question: string): AiChat {
+  const q = question.toLowerCase();
+  if (q.includes("cihaz") || q.includes("device"))
+    return { answer: "Hazırda 25 cihaz var — 23 online, 2 offline (demo cavab).", source: "prometheus", query: 'unifi_devices_total', result: "unifi_devices_total = 25" };
+  if (q.includes("offline") || q.includes("problem") || q.includes("error"))
+    return { answer: "1 UniFi AP offline görünür: AP-Zirzəmi. Elektrik/uplink yoxlanmalıdır (demo cavab).", source: "prometheus", query: 'unifi_device_up == 0', result: 'unifi_device_up{name="AP-Zirzəmi"} = 0' };
+  return { answer: "AI servisi qoşulanda buradan real cavab alacaqsınız. (demo rejimi)", source: "", query: "" };
+}
 
 // --- mock data (mirrors the BFF response shapes) ---------------------------
 
