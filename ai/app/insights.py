@@ -99,8 +99,8 @@ async def _client_trend() -> list[dict]:
             "title": "Klient sayı kəskin azalıb",
             "detail": f"İndi {cur:.0f} klient — son saatların normasından aşağı (z≈{z:.1f}). Mümkün AP problemi.",
         })
-    # Forecast 2h ahead.
-    fc = await prom.query('predict_linear(sum(unifi_clients_total)[1h], 7200)')
+    # Forecast 2h ahead (subquery syntax: range selector on a function result).
+    fc = await prom.query('predict_linear(sum(unifi_clients_total)[1h:5m], 7200)')
     inst = _instant(fc)
     if inst:
         pred = inst[0][1]
@@ -132,14 +132,23 @@ async def _memory_forecast() -> list[dict]:
     return out
 
 
+async def _safe(coro) -> list[dict]:
+    """Run one insight collector, swallowing errors so a single bad query
+    (e.g. an unsupported PromQL feature) never fails the whole endpoint."""
+    try:
+        return await coro
+    except Exception:  # noqa: BLE001
+        return []
+
+
 async def compute() -> dict:
     """Gather all insights, rank them, and add a short LLM synthesis."""
     insights: list[dict] = []
-    insights += await _offline_devices()
-    insights += await _metric_anomalies("unifi_device_cpu_percent", "%", 60, 2.5, "CPU")
-    insights += await _metric_anomalies("unifi_device_memory_percent", "%", 75, 2.5, "yaddaş")
-    insights += await _client_trend()
-    insights += await _memory_forecast()
+    insights += await _safe(_offline_devices())
+    insights += await _safe(_metric_anomalies("unifi_device_cpu_percent", "%", 60, 2.5, "CPU"))
+    insights += await _safe(_metric_anomalies("unifi_device_memory_percent", "%", 75, 2.5, "yaddaş"))
+    insights += await _safe(_client_trend())
+    insights += await _safe(_memory_forecast())
 
     insights.sort(key=lambda i: _RANK.get(i["level"], 3))
 
