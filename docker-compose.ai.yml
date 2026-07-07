@@ -1,0 +1,22 @@
+# AI service overlay. Run alongside the base stack (on the GPU box):
+#   docker compose -f docker-compose.yml -f docker-compose.ai.yml up -d ai
+# Ollama runs natively on the host (`ollama serve`) so it uses the GPU directly;
+# the container reaches it via host.docker.internal.
+services:
+  ai:
+    build: ./ai
+    image: unifi-collector-ai:local
+    container_name: ai
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    environment:
+      AI_PROMETHEUS_URL: "http://prometheus:9090"
+      AI_LOKI_URL: "http://loki:3100"
+      AI_OLLAMA_URL: "http://host.docker.internal:11434"
+      AI_OLLAMA_MODEL: "${AI_MODEL:-llama3.2:3b}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - prometheus
+      - loki
