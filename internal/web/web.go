@@ -67,7 +67,12 @@ func New(cfg Config, users *userStore, log *zap.Logger) (*Server, error) {
 	// Data (auth-gated).
 	mux.HandleFunc("GET /api/overview", s.requireAuth(s.handleOverview))
 	mux.HandleFunc("GET /api/devices", s.requireAuth(s.handleDevices))
+	mux.HandleFunc("GET /api/devices/{name}", s.requireAuth(s.handleDeviceDetail))
 	mux.HandleFunc("GET /api/clients", s.requireAuth(s.handleClients))
+	mux.HandleFunc("GET /api/wifi", s.requireAuth(s.handleWifi))
+	mux.HandleFunc("GET /api/traffic", s.requireAuth(s.handleTraffic))
+	mux.HandleFunc("GET /api/firewall", s.requireAuth(s.handleFirewall))
+	mux.HandleFunc("GET /api/logs/categories", s.requireAuth(s.handleLogsCategories))
 
 	// AI (auth-gated proxy to the AI service).
 	if s.aiProxy != nil {

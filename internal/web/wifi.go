@@ -1,0 +1,92 @@
+package web
+
+import (
+	"net/http"
+	"sort"
+)
+
+// kv is the {label,value} shape the frontend charts consume.
+type kv struct {
+	Label string  `json:"label"`
+	Value float64 `json:"value"`
+}
+
+type wifiDTO struct {
+	RSSIBins     []int    `json:"rssiBins"`
+	RSSILabels   []string `json:"rssiLabels"`
+	ClientsPerAp []kv     `json:"clientsPerAp"`
+	BandSplit    []kv     `json:"bandSplit"`
+	VLANSplit    []kv     `json:"vlanSplit"`
+	Quality      struct {
+		Good int `json:"good"`
+		Fair int `json:"fair"`
+		Poor int `json:"poor"`
+	} `json:"quality"`
+}
+
+// rssiBinLabels defines the histogram buckets (upper dBm edge per bin).
+var rssiBinLabels = []string{"-90", "-80", "-75", "-70", "-65", "-60", "-55", "-45"}
+var rssiBinEdges = []float64{-85, -80, -75, -70, -65, -60, -55, 0} // client falls in first bin whose edge >= rssi
+
+func (s *Server) handleWifi(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	var d wifiDTO
+	d.RSSILabels = rssiBinLabels
+	d.RSSIBins = make([]int, len(rssiBinLabels))
+	d.BandSplit = []kv{} // no radio/band label is exported yet -> no data
+
+	clients, err := s.prom.query(ctx, `unifi_client_rssi`)
+	if err != nil {
+		d.ClientsPerAp, d.VLANSplit = []kv{}, []kv{}
+		writeJSON(w, http.StatusOK, d)
+		return
+	}
+
+	perAp := map[string]float64{}
+	perVlan := map[string]float64{}
+	for _, c := range clients {
+		rssi := c.value
+		// histogram
+		for i, edge := range rssiBinEdges {
+			if rssi <= edge {
+				d.RSSIBins[i]++
+				break
+			}
+		}
+		// quality buckets
+		switch {
+		case rssi >= -60:
+			d.Quality.Good++
+		case rssi >= -72:
+			d.Quality.Fair++
+		default:
+			d.Quality.Poor++
+		}
+		if ap := c.labels["ap"]; ap != "" {
+			perAp[ap]++
+		}
+		if vlan := c.labels["vlan"]; vlan != "" {
+			perVlan[vlan]++
+		}
+	}
+
+	d.ClientsPerAp = sortedKV(perAp, "")
+	d.VLANSplit = sortedKV(perVlan, "VLAN ")
+	writeJSON(w, http.StatusOK, d)
+}
+
+// sortedKV turns a label->count map into a value-descending kv slice, with an
+// optional label prefix.
+func sortedKV(m map[string]float64, prefix string) []kv {
+	out := make([]kv, 0, len(m))
+	for k, v := range m {
+		out = append(out, kv{Label: prefix + k, Value: v})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Value != out[j].Value {
+			return out[i].Value > out[j].Value
+		}
+		return out[i].Label < out[j].Label
+	})
+	return out
+}
