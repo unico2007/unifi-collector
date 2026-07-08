@@ -1,46 +1,12 @@
 import { useEffect, useState } from "react";
 import { api, Overview, AiInsights, AiInsight } from "../lib/api";
+import { AreaLine, Donut, StatCard } from "../components/charts";
 
-function Kpi({ label, value, sub, tone }: { label: string; value: string; sub: string; tone?: string }) {
+function SvgIcon({ d }: { d: string }) {
   return (
-    <div className="card p-4">
-      <div className="text-sm text-muted">{label}</div>
-      <div className={`text-2xl font-semibold mt-1 ${tone ?? ""}`}>{value}</div>
-      <div className="text-xs text-muted mt-1">{sub}</div>
-    </div>
-  );
-}
-
-function LineChart({ data }: { data: number[] }) {
-  const w = 520, h = 140, pad = 6;
-  const min = Math.min(...data), max = Math.max(...data);
-  const nx = (i: number) => pad + (i * (w - pad * 2)) / (data.length - 1);
-  const ny = (v: number) => h - pad - ((v - min) / (max - min || 1)) * (h - pad * 2);
-  const line = data.map((v, i) => `${i ? "L" : "M"}${nx(i)},${ny(v)}`).join(" ");
-  const area = `${line} L${nx(data.length - 1)},${h} L${nx(0)},${h} Z`;
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-36">
-      <path d={area} fill="#1466d6" fillOpacity="0.08" />
-      <path d={line} fill="none" stroke="#1466d6" strokeWidth="2" strokeLinecap="round" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+      <path d={d} />
     </svg>
-  );
-}
-
-function Donut({ online, offline }: { online: number; offline: number }) {
-  const total = online + offline || 1;
-  const frac = online / total;
-  const c = 2 * Math.PI * 42;
-  return (
-    <div className="relative w-40 h-40 mx-auto">
-      <svg viewBox="0 0 100 100" className="w-40 h-40 -rotate-90">
-        <circle cx="50" cy="50" r="42" fill="none" stroke="#e9edf3" strokeWidth="12" />
-        <circle cx="50" cy="50" r="42" fill="none" stroke="#16a34a" strokeWidth="12" strokeDasharray={`${frac * c} ${c}`} strokeLinecap="round" />
-      </svg>
-      <div className="absolute inset-0 grid place-content-center text-center">
-        <div className="text-2xl font-semibold">{Math.round(frac * 100)}%</div>
-        <div className="text-xs text-muted">online</div>
-      </div>
-    </div>
   );
 }
 
@@ -104,22 +70,24 @@ export default function OverviewPage() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Kpi label="Cihazlar" value={String(d.devices.total)} sub={`${d.devices.online} online · ${d.devices.offline} offline`} />
-        <Kpi label="Klientlər" value={String(d.clients)} sub="qoşulu" />
-        <Kpi label="Sağlamlıq" value={`${d.health}%`} sub="sistem" tone="text-green-600" />
-        <Kpi label="Xəbərdarlıqlar" value={String(d.alerts)} sub="aktiv" tone="text-amber-600" />
+        <StatCard label="Cihazlar" value={d.devices.total} sub={`${d.devices.online} online · ${d.devices.offline} offline`} tone="brand" icon={<SvgIcon d="M3 4h18v6H3zM3 14h18v6H3zM7 7h.01M7 17h.01" />} />
+        <StatCard label="Klientlər" value={d.clients} sub="qoşulu" tone="slate" spark={d.clientSeries} icon={<SvgIcon d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />} />
+        <StatCard label="Sağlamlıq" value={`${d.health}%`} sub="sistem" tone="green" icon={<SvgIcon d="M22 12h-4l-3 9L9 3l-3 9H2" />} />
+        <StatCard label="Xəbərdarlıqlar" value={d.alerts} sub="aktiv" tone={d.alerts ? "amber" : "green"} icon={<SvgIcon d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0" />} />
       </div>
 
       <AiInsightsPanel />
 
       <div className="grid lg:grid-cols-3 gap-4">
         <div className="card p-4 lg:col-span-2">
-          <div className="text-sm font-medium mb-2">Klient sayı (24 saat)</div>
-          <LineChart data={d.clientSeries} />
+          <div className="text-sm font-semibold mb-3">Klient sayı (24 saat)</div>
+          <AreaLine data={d.clientSeries} height={160} />
         </div>
-        <div className="card p-4">
-          <div className="text-sm font-medium mb-2">Cihaz statusu</div>
-          <Donut online={d.devices.online} offline={d.devices.offline} />
+        <div className="card p-4 flex flex-col">
+          <div className="text-sm font-semibold mb-2">Cihaz statusu</div>
+          <div className="flex-1 grid place-content-center">
+            <Donut value={d.devices.online} total={d.devices.total} label="online" sublabel={`${d.devices.online}/${d.devices.total} cihaz`} />
+          </div>
         </div>
       </div>
 

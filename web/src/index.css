@@ -22,7 +22,7 @@ body {
 
 @layer components {
   .card {
-    @apply bg-white border border-line rounded-xl;
+    @apply bg-white border border-line rounded-xl shadow-sm;
   }
   .pill {
     @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
@@ -35,5 +35,53 @@ body {
   }
   .btn-primary {
     @apply bg-brand-500 border-brand-500 text-white hover:bg-brand-600;
+  }
+}
+
+/* ---- chart animations ---- */
+@keyframes chart-draw {
+  from {
+    stroke-dasharray: 1200;
+    stroke-dashoffset: 1200;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.chart-draw {
+  animation: chart-draw 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes bar-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.bar-grow {
+  transform-origin: left;
+  animation: bar-grow 0.7s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes bar-rise {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+.bar-rise {
+  transform-origin: bottom;
+  animation: bar-rise 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chart-draw,
+  .bar-grow,
+  .bar-rise {
+    animation: none;
   }
 }

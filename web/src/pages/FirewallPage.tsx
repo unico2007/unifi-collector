@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, Firewall } from "../lib/api";
-import { Card, DualArea, TopBars } from "../components/charts";
+import { Card, DualArea, StatCard, TopBars } from "../components/charts";
 
 export default function FirewallPage() {
   const [f, setF] = useState<Firewall | null>(null);
@@ -12,14 +12,14 @@ export default function FirewallPage() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Kpi label="Bu gün bloklanan" value={f.blockedToday.toLocaleString()} tone="text-red-600" />
-        <Kpi label="İcazə verilən" value={f.allow.reduce((a, b) => a + b, 0).toLocaleString()} tone="text-green-600" />
-        <Kpi label="Aşkarlanan hücum" value={String(f.attacks.length)} tone="text-amber-600" />
-        <Kpi label="Aktiv qaydalar" value={String(f.topRules.length)} />
+        <StatCard label="Bu gün bloklanan" value={f.blockedToday.toLocaleString()} tone="red" spark={f.deny} icon={<Ico d="M18 6 6 18M6 6l12 12" />} />
+        <StatCard label="İcazə verilən" value={f.allow.reduce((a, b) => a + b, 0).toLocaleString()} tone="green" spark={f.allow} icon={<Ico d="M20 6 9 17l-5-5" />} />
+        <StatCard label="Aşkarlanan hücum" value={f.attacks.length} tone="amber" icon={<Ico d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />} />
+        <StatCard label="Aktiv qaydalar" value={f.topRules.length} tone="slate" icon={<Ico d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />} />
       </div>
 
-      <Card title="İcazə / Blok (24 saat)">
-        <DualArea a={f.allow} b={f.deny} labelA="İcazə" labelB="Blok" />
+      <Card title="İcazə / Blok (24 saat)" subtitle="Firewall qərarları">
+        <DualArea a={f.allow} b={f.deny} labelA="İcazə" labelB="Blok" colorA="#16a34a" colorB="#ef4444" />
       </Card>
 
       <div className="grid lg:grid-cols-3 gap-4">
@@ -59,11 +59,10 @@ export default function FirewallPage() {
   );
 }
 
-function Kpi({ label, value, tone }: { label: string; value: string; tone?: string }) {
+function Ico({ d }: { d: string }) {
   return (
-    <div className="card p-4">
-      <div className="text-sm text-muted">{label}</div>
-      <div className={`text-2xl font-semibold mt-1 ${tone ?? ""}`}>{value}</div>
-    </div>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+      <path d={d} />
+    </svg>
   );
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, Traffic } from "../lib/api";
-import { Card, DualArea, TopBars } from "../components/charts";
+import { Card, DualArea, StatCard, TopBars } from "../components/charts";
 
 export default function TrafficPage() {
   const [t, setT] = useState<Traffic | null>(null);
@@ -12,13 +12,13 @@ export default function TrafficPage() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Kpi label="Cəmi endirmə (RX)" value={t.totalRx} />
-        <Kpi label="Cəmi yükləmə (TX)" value={t.totalTx} />
-        <Kpi label="Aktiv sessiyalar" value="1,204" />
-        <Kpi label="Ən yüksək sürət" value="486 Mbps" />
+        <StatCard label="Endirmə (RX)" value={t.totalRx} tone="brand" spark={t.rx} icon={<Ico d="M12 5v14M19 12l-7 7-7-7" />} />
+        <StatCard label="Yükləmə (TX)" value={t.totalTx} tone="green" spark={t.tx} icon={<Ico d="M12 19V5M5 12l7-7 7 7" />} />
+        <StatCard label="Aktiv sessiyalar" value="1,204" tone="slate" icon={<Ico d="M22 12h-4l-3 9L9 3l-3 9H2" />} />
+        <StatCard label="Ən yüksək sürət" value="486 Mbps" tone="amber" icon={<Ico d="M13 2L3 14h9l-1 8 10-12h-9z" />} />
       </div>
 
-      <Card title="Bant genişliyi (24 saat)">
+      <Card title="Bant genişliyi (24 saat)" subtitle="Endirmə və yükləmə">
         <DualArea a={t.rx} b={t.tx} />
       </Card>
 
@@ -26,19 +26,18 @@ export default function TrafficPage() {
         <Card title="Ən çox trafik istifadə edənlər">
           <TopBars rows={t.topTalkers} />
         </Card>
-        <Card title="AP-yə görə trafik (GB)">
-          <TopBars rows={t.perAp} />
+        <Card title="AP-yə görə trafik" subtitle="GB">
+          <TopBars rows={t.perAp} unit=" GB" />
         </Card>
       </div>
     </div>
   );
 }
 
-function Kpi({ label, value }: { label: string; value: string }) {
+function Ico({ d }: { d: string }) {
   return (
-    <div className="card p-4">
-      <div className="text-sm text-muted">{label}</div>
-      <div className="text-2xl font-semibold mt-1">{value}</div>
-    </div>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+      <path d={d} />
+    </svg>
   );
 }

@@ -1,19 +1,11 @@
 import { useEffect, useState } from "react";
 import { api, AlertsData } from "../lib/api";
+import { StatCard } from "../components/charts";
 
 const levelStyle: Record<string, { stripe: string; pill: string; label: string }> = {
   critical: { stripe: "bg-red-500", pill: "bg-red-50 text-red-700", label: "Kritik" },
   warning: { stripe: "bg-amber-500", pill: "bg-amber-50 text-amber-700", label: "Xəbərdarlıq" },
 };
-
-function Kpi({ label, value, tone }: { label: string; value: number; tone: string }) {
-  return (
-    <div className="card p-4">
-      <div className="text-sm text-muted">{label}</div>
-      <div className={`text-3xl font-semibold mt-1 ${tone}`}>{value}</div>
-    </div>
-  );
-}
 
 export default function AlertsPage() {
   const [d, setD] = useState<AlertsData | null>(null);
@@ -27,15 +19,10 @@ export default function AlertsPage() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Kpi label="Kritik" value={d.counts.critical} tone={d.counts.critical ? "text-red-600" : "text-green-600"} />
-        <Kpi label="Xəbərdarlıq" value={d.counts.warning} tone={d.counts.warning ? "text-amber-600" : "text-green-600"} />
-        <Kpi label="Aktiv qaydalar" value={d.rules.length} tone="" />
-        <div className="card p-4">
-          <div className="text-sm text-muted">Vəziyyət</div>
-          <div className={`text-lg font-semibold mt-2 ${healthy ? "text-green-600" : "text-amber-600"}`}>
-            {healthy ? "✓ Hər şey qaydasında" : "Diqqət tələb olunur"}
-          </div>
-        </div>
+        <StatCard label="Kritik" value={d.counts.critical} tone={d.counts.critical ? "red" : "green"} icon={<Ico d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />} />
+        <StatCard label="Xəbərdarlıq" value={d.counts.warning} tone={d.counts.warning ? "amber" : "green"} icon={<Ico d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0" />} />
+        <StatCard label="Aktiv qaydalar" value={d.rules.length} tone="slate" icon={<Ico d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />} />
+        <StatCard label="Vəziyyət" value={healthy ? "Qaydasında" : "Diqqət"} tone={healthy ? "green" : "amber"} sub={healthy ? "bütün cihazlar həddlərdə" : "yoxlama tələb olunur"} icon={<Ico d={healthy ? "M20 6 9 17l-5-5" : "M12 9v4M12 17h.01"} />} />
       </div>
 
       {/* Active alerts */}
@@ -89,5 +76,13 @@ export default function AlertsPage() {
         Qaydalar hər açılışda Prometheus-dan canlı qiymətləndirilir. Konfiqurasiya olunan həddlər və tarixçə növbəti mərhələdədir.
       </p>
     </div>
+  );
+}
+
+function Ico({ d }: { d: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+      <path d={d} />
+    </svg>
   );
 }
