@@ -28,25 +28,25 @@ type Config struct {
 
 // Server is the BFF. It owns the user store, sessions, and upstream clients.
 type Server struct {
-	cfg      Config
-	log      *zap.Logger
-	http     *http.Server
-	users    *userStore
-	sessions *sessionStore
-	prom     *promClient
-	loki     *lokiClient
-	aiProxy  *httputil.ReverseProxy
+	cfg     Config
+	log     *zap.Logger
+	http    *http.Server
+	users   *userStore
+	signer  *signer
+	prom    *promClient
+	loki    *lokiClient
+	aiProxy *httputil.ReverseProxy
 }
 
 // New wires the server. The caller owns the userStore lifecycle via Close.
 func New(cfg Config, users *userStore, log *zap.Logger) (*Server, error) {
 	s := &Server{
-		cfg:      cfg,
-		log:      log,
-		users:    users,
-		sessions: newSessionStore(),
-		prom:     newPromClient(cfg.PrometheusURL),
-		loki:     newLokiClient(cfg.LokiURL),
+		cfg:    cfg,
+		log:    log,
+		users:  users,
+		signer: newSigner(users.secret),
+		prom:   newPromClient(cfg.PrometheusURL),
+		loki:   newLokiClient(cfg.LokiURL),
 	}
 
 	if cfg.AIURL != "" {

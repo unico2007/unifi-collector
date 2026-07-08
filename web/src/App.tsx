@@ -16,7 +16,18 @@ import TopologyPage from "./pages/TopologyPage";
 import ReportsPage from "./pages/ReportsPage";
 
 export default function App() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="h-full grid place-items-center text-muted">
+        <div className="flex items-center gap-3">
+          <span className="w-8 h-8 rounded-lg bg-brand-500 text-white grid place-items-center font-semibold">U</span>
+          Yüklənir...
+        </div>
+      </div>
+    );
+  }
 
   if (!user) {
     return (

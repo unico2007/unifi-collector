@@ -14,9 +14,10 @@ type rawClient struct {
 	Hostname string  `json:"hostname"`
 	Mac      string  `json:"mac"`
 	IP       string  `json:"ip"`
-	APMac    string  `json:"ap_mac"` // AP the client is associated with
-	SWMac    string  `json:"sw_mac"` // switch, for wired clients
-	RSSI     float64 `json:"rssi"`
+	APMac    string  `json:"ap_mac"`  // AP the client is associated with
+	SWMac    string  `json:"sw_mac"`  // switch, for wired clients
+	RSSI     float64 `json:"rssi"`    // UniFi's signal-above-noise (positive)
+	Signal   float64 `json:"signal"`  // actual signal strength in dBm (negative)
 	TxRate   float64 `json:"tx_rate"` // kbps
 	RxRate   float64 `json:"rx_rate"` // kbps
 	VLAN     int     `json:"vlan"`
@@ -24,6 +25,16 @@ type rawClient struct {
 	Radio    string  `json:"radio"`    // "ng"=2.4GHz, "na"=5GHz, "6e"=6GHz
 	Channel  int     `json:"channel"`  // radio channel (fallback for band)
 	IsWired  bool    `json:"is_wired"` // true for wired clients (no band)
+}
+
+// clientRSSI returns the client signal in real dBm. UniFi exposes both `signal`
+// (true dBm, negative) and `rssi` (signal-above-noise, positive); we prefer the
+// dBm value so the WiFi quality thresholds (-60/-72 dBm) actually apply.
+func clientRSSI(signal, rssi float64) float64 {
+	if signal < 0 {
+		return signal
+	}
+	return rssi
 }
 
 // wifiBand derives a human band label from the station's radio/channel. Returns
@@ -82,7 +93,7 @@ func (c *Client) Clients(ctx context.Context) ([]models.Client, error) {
 			ConnectedAP: ap,
 			VLAN:        strconv.Itoa(cl.VLAN),
 			Band:        wifiBand(cl.Radio, cl.Channel, cl.IsWired),
-			RSSI:        cl.RSSI,
+			RSSI:        clientRSSI(cl.Signal, cl.RSSI),
 			// UniFi reports negotiated rates in kbps; normalize to bits/s.
 			TxRate:        cl.TxRate * 1000,
 			RxRate:        cl.RxRate * 1000,

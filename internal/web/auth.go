@@ -1,15 +1,18 @@
 package web
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
-	"sync"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -22,9 +25,11 @@ const (
 )
 
 // userStore persists users in SQLite. There is intentionally NO register
-// endpoint — accounts are created out-of-band via the create-user CLI.
+// endpoint — accounts are created out-of-band via the create-user CLI. It also
+// holds a persistent session-signing secret so signed cookies survive restarts.
 type userStore struct {
-	db *sql.DB
+	db     *sql.DB
+	secret []byte
 }
 
 // OpenUserStore opens (creating if needed) the SQLite user database.
@@ -45,7 +50,36 @@ func OpenUserStore(path string) (*userStore, error) {
 	)`); err != nil {
 		return nil, err
 	}
-	return &userStore{db: db}, nil
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)`); err != nil {
+		return nil, err
+	}
+	secret, err := loadOrCreateSecret(db)
+	if err != nil {
+		return nil, err
+	}
+	return &userStore{db: db, secret: secret}, nil
+}
+
+// loadOrCreateSecret returns a stable random secret persisted in the DB, so
+// session cookies stay valid across restarts and redeploys.
+func loadOrCreateSecret(db *sql.DB) ([]byte, error) {
+	var hexSecret string
+	err := db.QueryRow(`SELECT v FROM meta WHERE k = 'session_secret'`).Scan(&hexSecret)
+	if err == nil {
+		return hex.DecodeString(hexSecret)
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return nil, err
+	}
+	hexSecret = hex.EncodeToString(buf)
+	if _, err := db.Exec(`INSERT INTO meta (k, v) VALUES ('session_secret', ?)`, hexSecret); err != nil {
+		return nil, err
+	}
+	return buf, nil
 }
 
 // Close closes the underlying database.
@@ -85,50 +119,60 @@ func (u *userStore) verify(username, password string) (role string, ok bool) {
 	return role, true
 }
 
-// --- sessions (in-memory; a restart simply forces re-login) ----------------
+// --- sessions (stateless, HMAC-signed cookie; survives restarts) -----------
 
 type session struct {
 	username string
 	role     string
-	expires  time.Time
 }
 
-type sessionStore struct {
-	mu sync.Mutex
-	m  map[string]session
+// signer issues and verifies signed session cookies. The token is
+// base64(payload).base64(hmac-sha256(payload)); payload is a JSON blob with the
+// username, role and expiry. No server-side state, so a restart keeps sessions.
+type signer struct {
+	key []byte
 }
 
-func newSessionStore() *sessionStore { return &sessionStore{m: map[string]session{}} }
-
-func (s *sessionStore) create(username, role string) string {
-	tok := randomToken()
-	s.mu.Lock()
-	s.m[tok] = session{username: username, role: role, expires: time.Now().Add(sessionTTL)}
-	s.mu.Unlock()
-	return tok
+type sessionPayload struct {
+	U   string `json:"u"`
+	R   string `json:"r"`
+	Exp int64  `json:"exp"`
 }
 
-func (s *sessionStore) get(tok string) (session, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	sess, ok := s.m[tok]
-	if !ok || time.Now().After(sess.expires) {
-		delete(s.m, tok)
+func newSigner(key []byte) *signer { return &signer{key: key} }
+
+func (s *signer) sign(username, role string) string {
+	payload, _ := json.Marshal(sessionPayload{U: username, R: role, Exp: time.Now().Add(sessionTTL).Unix()})
+	mac := hmac.New(sha256.New, s.key)
+	mac.Write(payload)
+	enc := base64.RawURLEncoding
+	return enc.EncodeToString(payload) + "." + enc.EncodeToString(mac.Sum(nil))
+}
+
+func (s *signer) verify(tok string) (session, bool) {
+	parts := strings.SplitN(tok, ".", 2)
+	if len(parts) != 2 {
 		return session{}, false
 	}
-	return sess, true
-}
-
-func (s *sessionStore) delete(tok string) {
-	s.mu.Lock()
-	delete(s.m, tok)
-	s.mu.Unlock()
-}
-
-func randomToken() string {
-	b := make([]byte, 24)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
+	enc := base64.RawURLEncoding
+	payload, err := enc.DecodeString(parts[0])
+	if err != nil {
+		return session{}, false
+	}
+	sig, err := enc.DecodeString(parts[1])
+	if err != nil {
+		return session{}, false
+	}
+	mac := hmac.New(sha256.New, s.key)
+	mac.Write(payload)
+	if !hmac.Equal(sig, mac.Sum(nil)) {
+		return session{}, false
+	}
+	var p sessionPayload
+	if err := json.Unmarshal(payload, &p); err != nil || time.Now().Unix() > p.Exp {
+		return session{}, false
+	}
+	return session{username: p.U, role: p.R}, true
 }
 
 // --- handlers --------------------------------------------------------------
@@ -154,10 +198,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "İstifadəçi adı və ya parol yanlışdır"})
 		return
 	}
-	tok := s.sessions.create(req.Username, role)
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
-		Value:    tok,
+		Value:    s.signer.sign(req.Username, role),
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
@@ -166,10 +209,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, userResp{Username: req.Username, Role: role})
 }
 
-func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	if c, err := r.Cookie(sessionCookie); err == nil {
-		s.sessions.delete(c.Value)
-	}
+func (s *Server) handleLogout(w http.ResponseWriter, _ *http.Request) {
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -188,7 +228,7 @@ func (s *Server) currentSession(r *http.Request) (session, bool) {
 	if err != nil {
 		return session{}, false
 	}
-	return s.sessions.get(c.Value)
+	return s.signer.verify(c.Value)
 }
 
 // requireAuth wraps a handler so only authenticated requests reach it.
