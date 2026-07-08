@@ -65,10 +65,11 @@ func (c *lokiClient) recent(ctx context.Context, query string, dur time.Duration
 		level := st.Stream["level"]
 		for _, v := range st.Values {
 			ns, _ := strconv.ParseInt(v[0], 10, 64)
+			msg, lvl := decodeLogLine(v[1], level)
 			lines = append(lines, logLine{
 				Time:   time.Unix(0, ns).Format("15:04:05"),
-				Level:  normalizeLevel(level),
-				Msg:    v[1],
+				Level:  normalizeLevel(lvl),
+				Msg:    msg,
 				Labels: st.Stream,
 			})
 		}
@@ -79,6 +80,26 @@ func (c *lokiClient) recent(ctx context.Context, query string, dur time.Duration
 		lines = lines[:limit]
 	}
 	return lines
+}
+
+// decodeLogLine unwraps a Loki log line. Collector pushes each line as a JSON
+// object {"event","level","msg","vendor","site"} where "msg" carries the real
+// payload (a UniFi CEF string). Returning the inner msg keeps the JSON tail
+// (`","vendor":..}`) out of downstream CEF parsing and the Overview panel. Falls
+// back to the raw line and stream level for anything that isn't our JSON shape.
+func decodeLogLine(raw, streamLevel string) (msg, level string) {
+	var w struct {
+		Msg   string `json:"msg"`
+		Level string `json:"level"`
+	}
+	if err := json.Unmarshal([]byte(raw), &w); err == nil && w.Msg != "" {
+		lvl := w.Level
+		if lvl == "" {
+			lvl = streamLevel
+		}
+		return w.Msg, lvl
+	}
+	return raw, streamLevel
 }
 
 func normalizeLevel(l string) string {

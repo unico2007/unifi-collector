@@ -43,44 +43,9 @@ var alertRules = []ruleDTO{
 func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var out alertsDTO
-	out.Active = []alertDTO{}
+	out.Active = s.activeAlerts(ctx)
 	out.Rules = alertRules
 
-	out.Active = append(out.Active, s.alertDevices(ctx, `unifi_device_up == 0`, "critical", "Cihaz offline",
-		func(l map[string]string, _ float64) (string, string) {
-			return fmt.Sprintf("%s (%s) offline-dır", devName(l), l["type"]), "offline"
-		})...)
-
-	out.Active = append(out.Active, s.alertDevices(ctx, `unifi_device_cpu_percent > 85`, "warning", "CPU yüksək",
-		func(l map[string]string, v float64) (string, string) {
-			return fmt.Sprintf("%s: CPU %.0f%%", devName(l), v), fmt.Sprintf("%.0f%%", v)
-		})...)
-
-	out.Active = append(out.Active, s.alertDevices(ctx, `unifi_device_memory_percent > 90`, "warning", "Yaddaş yüksək",
-		func(l map[string]string, v float64) (string, string) {
-			return fmt.Sprintf("%s: yaddaş %.0f%%", devName(l), v), fmt.Sprintf("%.0f%%", v)
-		})...)
-
-	out.Active = append(out.Active, s.alertDevices(ctx, `unifi_health_status < 1`, "warning", "Subsystem problemi",
-		func(l map[string]string, v float64) (string, string) {
-			lvl := "xəbərdarlıq"
-			if v == 0 {
-				lvl = "xəta"
-			}
-			return fmt.Sprintf("%s subsystem: %s", l["subsystem"], lvl), lvl
-		})...)
-
-	// Escalate health=0 subsystems to critical.
-	for i := range out.Active {
-		if out.Active[i].Rule == "Subsystem problemi" && out.Active[i].Value == "xəta" {
-			out.Active[i].Level = "critical"
-		}
-	}
-
-	// Critical first, then warnings.
-	sort.SliceStable(out.Active, func(i, j int) bool {
-		return alertRank(out.Active[i].Level) < alertRank(out.Active[j].Level)
-	})
 	for _, a := range out.Active {
 		switch a.Level {
 		case "critical":
@@ -91,6 +56,50 @@ func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, out)
+}
+
+// activeAlerts evaluates every rule live against Prometheus and returns the
+// current active alerts, critical first. Shared by the Alerts page and the
+// Overview alert count so both always agree.
+func (s *Server) activeAlerts(ctx context.Context) []alertDTO {
+	active := []alertDTO{}
+
+	active = append(active, s.alertDevices(ctx, `unifi_device_up == 0`, "critical", "Cihaz offline",
+		func(l map[string]string, _ float64) (string, string) {
+			return fmt.Sprintf("%s (%s) offline-dır", devName(l), l["type"]), "offline"
+		})...)
+
+	active = append(active, s.alertDevices(ctx, `unifi_device_cpu_percent > 85`, "warning", "CPU yüksək",
+		func(l map[string]string, v float64) (string, string) {
+			return fmt.Sprintf("%s: CPU %.0f%%", devName(l), v), fmt.Sprintf("%.0f%%", v)
+		})...)
+
+	active = append(active, s.alertDevices(ctx, `unifi_device_memory_percent > 90`, "warning", "Yaddaş yüksək",
+		func(l map[string]string, v float64) (string, string) {
+			return fmt.Sprintf("%s: yaddaş %.0f%%", devName(l), v), fmt.Sprintf("%.0f%%", v)
+		})...)
+
+	active = append(active, s.alertDevices(ctx, `unifi_health_status < 1`, "warning", "Subsystem problemi",
+		func(l map[string]string, v float64) (string, string) {
+			lvl := "xəbərdarlıq"
+			if v == 0 {
+				lvl = "xəta"
+			}
+			return fmt.Sprintf("%s subsystem: %s", l["subsystem"], lvl), lvl
+		})...)
+
+	// Escalate health=0 subsystems to critical.
+	for i := range active {
+		if active[i].Rule == "Subsystem problemi" && active[i].Value == "xəta" {
+			active[i].Level = "critical"
+		}
+	}
+
+	// Critical first, then warnings.
+	sort.SliceStable(active, func(i, j int) bool {
+		return alertRank(active[i].Level) < alertRank(active[j].Level)
+	})
+	return active
 }
 
 // alertDevices runs a threshold query and builds one alert per matching series.

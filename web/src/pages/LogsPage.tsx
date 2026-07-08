@@ -32,6 +32,21 @@ export default function LogsPage() {
 
   const cur = cats.find((c) => c.key === active);
 
+  // Error/warning counts derived from the selected category's rows (level pill
+  // sits in column 1). Honest counts instead of the old hardcoded 12 / 34.
+  const levels = useMemo(() => {
+    let err = 0,
+      warn = 0;
+    cur?.rows.forEach((row) => {
+      const cell = row[1];
+      if (typeof cell === "object") {
+        if (cell.kind === "no") err++;
+        else if (cell.kind === "warn") warn++;
+      }
+    });
+    return { err, warn };
+  }, [cur]);
+
   return (
     <div className="flex gap-4 h-full">
       <div className="w-52 shrink-0 card p-2 overflow-auto">
@@ -59,8 +74,8 @@ export default function LogsPage() {
       <div className="flex-1 min-w-0 flex flex-col">
         <div className="grid grid-cols-3 gap-3 mb-3">
           <Stat label="Bu gün" value={cur ? cur.count.toLocaleString() : "-"} />
-          <Stat label="Xəta" value="12" tone="text-red-600" />
-          <Stat label="Xəbərdarlıq" value="34" tone="text-amber-600" />
+          <Stat label="Xəta" value={String(levels.err)} tone="text-red-600" />
+          <Stat label="Xəbərdarlıq" value={String(levels.warn)} tone="text-amber-600" />
         </div>
 
         <div className="flex items-center gap-2 mb-3 flex-wrap">

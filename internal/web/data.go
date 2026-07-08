@@ -75,7 +75,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	} else {
 		o.Health = 100
 	}
-	o.Alerts = 0 // alert engine lands in a later phase
+	o.Alerts = len(s.activeAlerts(ctx)) // real active-alert count (same engine as the Alerts page)
 
 	o.ClientSeries, _ = s.prom.rangeSeries(ctx, `sum(unifi_clients_total)`, 24*time.Hour, time.Hour)
 	if o.ClientSeries == nil {
@@ -88,8 +88,12 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 		o.VendorSplit = []vendorDTO{}
 	}
 
-	// Recent logs across both vendors, newest first.
+	// Recent logs across both vendors, newest first. Render each CEF payload as
+	// a short readable line instead of the raw JSON-wrapped log.
 	o.RecentLogs = s.loki.recent(ctx, `{vendor=~"unifi|kerio"}`, time.Hour, 8)
+	for i := range o.RecentLogs {
+		o.RecentLogs[i].Msg = friendlyLog(o.RecentLogs[i].Msg)
+	}
 	if o.RecentLogs == nil {
 		o.RecentLogs = []logLine{}
 	}

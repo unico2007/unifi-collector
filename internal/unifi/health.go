@@ -27,12 +27,22 @@ func (c *Client) Health(ctx context.Context) ([]models.Health, error) {
 
 	out := make([]models.Health, 0, len(raw))
 	for _, h := range raw {
+		numDevices := h.NumAP + h.NumSW + h.NumGW
+		// Skip subsystems UniFi has no device managing. When the site's gateway
+		// isn't UniFi (here it's Kerio), the wan/lan/vpn/www subsystems come back
+		// with no managed device and a non-"ok" status, which would otherwise map
+		// to 0 (error) and raise false alerts. A subsystem UniFi truly manages
+		// (e.g. wlan with the APs) reports NumDevices > 0 and still surfaces real
+		// problems.
+		if numDevices == 0 && h.Status != "ok" && h.Status != "warning" {
+			continue
+		}
 		out = append(out, models.Health{
 			Vendor:     c.Name(),
 			Site:       c.cfg.Site,
 			Subsystem:  h.Subsystem,
 			Status:     h.Status,
-			NumDevices: h.NumAP + h.NumSW + h.NumGW,
+			NumDevices: numDevices,
 			NumClients: h.NumUser + h.NumGuest,
 		})
 	}

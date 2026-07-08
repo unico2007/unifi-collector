@@ -73,6 +73,24 @@ func (s *Server) handleLogsCategories(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// friendlyLog renders a (JSON-decoded) log line as a short human-readable string
+// for the Overview "recent logs" panel: "<device>: <message>", falling back to
+// the event name or the raw line when the CEF payload can't be parsed.
+func friendlyLog(raw string) string {
+	name, device, msg, _, ok := parseCEF(raw)
+	if !ok {
+		return raw
+	}
+	text := msg
+	if text == "" {
+		text = name
+	}
+	if device != "" && text != "" {
+		return device + ": " + text
+	}
+	return text
+}
+
 // parseCEF extracts the event name, device, message and level from a UniFi CEF
 // log line: "...CEF:0|Ubiquiti|UniFi OS|ver|sigId|Name|Severity|ext...".
 func parseCEF(line string) (name, device, msg, level string, ok bool) {

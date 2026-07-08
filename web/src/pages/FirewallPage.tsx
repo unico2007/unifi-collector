@@ -13,9 +13,9 @@ export default function FirewallPage() {
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Kpi label="Bu gün bloklanan" value={f.blockedToday.toLocaleString()} tone="text-red-600" />
-        <Kpi label="İcazə verilən" value="1.2M" tone="text-green-600" />
+        <Kpi label="İcazə verilən" value={f.allow.reduce((a, b) => a + b, 0).toLocaleString()} tone="text-green-600" />
         <Kpi label="Aşkarlanan hücum" value={String(f.attacks.length)} tone="text-amber-600" />
-        <Kpi label="Aktiv qaydalar" value="42" />
+        <Kpi label="Aktiv qaydalar" value={String(f.topRules.length)} />
       </div>
 
       <Card title="İcazə / Blok (24 saat)">
