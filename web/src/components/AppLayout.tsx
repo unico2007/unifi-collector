@@ -10,6 +10,7 @@ const groups = [
       { to: "/ai", label: "AI köməkçi", icon: "spark" },
       { to: "/traffic", label: "Trafik", icon: "activity" },
       { to: "/wifi", label: "WiFi analitika", icon: "wifi" },
+      { to: "/reports", label: "Hesabatlar", icon: "file" },
     ],
   },
   {
@@ -40,6 +41,7 @@ const titles: Record<string, string> = {
   "/firewall": "Firewall / Təhlükəsizlik",
   "/alerts": "Alertlər",
   "/topology": "Topologiya",
+  "/reports": "Hesabatlar",
   "/logs": "Loglar",
 };
 
@@ -58,6 +60,7 @@ function Icon({ name, className = "w-5 h-5" }: { name: string; className?: strin
     spark: "M12 3l1.9 4.8L18 9l-4.1 1.2L12 15l-1.9-4.8L6 9l4.1-1.2zM19 14l.9 2.1L22 17l-2.1.9L19 20l-.9-2.1L16 17l2.1-.9z",
     bell: "M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0",
     share: "M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM8.6 13.5l6.8 3.9M15.4 6.6l-6.8 3.9",
+    file: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8",
   };
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
