@@ -1,6 +1,7 @@
 import { api, AlertsData } from "../lib/api";
 import { usePolling } from "../lib/refresh";
 import { StatCard } from "../components/charts";
+import { PageSkeleton } from "../components/Skeleton";
 
 const levelStyle: Record<string, { stripe: string; pill: string; label: string }> = {
   critical: { stripe: "bg-red-500", pill: "bg-red-50 text-red-700", label: "Kritik" },
@@ -9,7 +10,7 @@ const levelStyle: Record<string, { stripe: string; pill: string; label: string }
 
 export default function AlertsPage() {
   const { data: d } = usePolling<AlertsData>(() => api.alerts());
-  if (!d) return <div className="text-muted">Yüklənir...</div>;
+  if (!d) return <PageSkeleton stats={2} cards={2} />;
 
   const healthy = d.active.length === 0;
 

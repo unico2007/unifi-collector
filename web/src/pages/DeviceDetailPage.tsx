@@ -2,13 +2,14 @@ import { Link, useParams } from "react-router-dom";
 import { api, DeviceDetail } from "../lib/api";
 import { usePolling } from "../lib/refresh";
 import { Card, AreaLine, Gauge } from "../components/charts";
+import { PageSkeleton } from "../components/Skeleton";
 
 const fmtMbps = (v: number) => (v >= 10 ? Math.round(v) : Math.round(v * 10) / 10);
 
 export default function DeviceDetailPage() {
   const { name = "" } = useParams();
   const { data: d } = usePolling<DeviceDetail>(() => api.device(name), [name]);
-  if (!d) return <div className="text-muted">Yüklənir...</div>;
+  if (!d) return <PageSkeleton stats={4} cards={2} />;
 
   const dev = d.device;
   const last = (a: number[]) => (a.length ? a[a.length - 1] : 0);

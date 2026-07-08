@@ -1,12 +1,13 @@
 import { api, Traffic } from "../lib/api";
 import { usePolling } from "../lib/refresh";
 import { Card, DualArea, StatCard, TopBars } from "../components/charts";
+import { PageSkeleton } from "../components/Skeleton";
 
 const fmtMbps = (v: number) => `${v >= 10 ? Math.round(v) : Math.round(v * 10) / 10} Mbps`;
 
 export default function TrafficPage() {
   const { data: t } = usePolling<Traffic>(() => api.traffic());
-  if (!t) return <div className="text-muted">Yüklənir...</div>;
+  if (!t) return <PageSkeleton stats={4} cards={2} />;
 
   // Derived from the real Mbps series the BFF returns (no hardcoded figures).
   const last = (a: number[]) => (a.length ? a[a.length - 1] : 0);

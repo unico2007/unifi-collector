@@ -1,6 +1,7 @@
 import { api, Overview, AiInsights, AiInsight } from "../lib/api";
 import { usePolling } from "../lib/refresh";
 import { AreaLine, Donut, StatCard } from "../components/charts";
+import { PageSkeleton } from "../components/Skeleton";
 
 function SvgIcon({ d }: { d: string }) {
   return (
@@ -59,7 +60,7 @@ function AiInsightsPanel() {
 
 export default function OverviewPage() {
   const { data: d } = usePolling<Overview>(() => api.overview());
-  if (!d) return <div className="text-muted">Yüklənir...</div>;
+  if (!d) return <PageSkeleton stats={4} cards={2} />;
 
   return (
     <div className="space-y-4">

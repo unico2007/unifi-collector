@@ -1,10 +1,11 @@
 import { api, Firewall } from "../lib/api";
 import { usePolling } from "../lib/refresh";
 import { Card, DualArea, StatCard, TopBars } from "../components/charts";
+import { PageSkeleton } from "../components/Skeleton";
 
 export default function FirewallPage() {
   const { data: f } = usePolling<Firewall>(() => api.firewall());
-  if (!f) return <div className="text-muted">Yüklənir...</div>;
+  if (!f) return <PageSkeleton stats={4} cards={2} />;
 
   return (
     <div className="space-y-4">

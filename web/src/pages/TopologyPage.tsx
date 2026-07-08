@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api, Topology, TopoNode } from "../lib/api";
 import { usePolling } from "../lib/refresh";
+import { PageSkeleton } from "../components/Skeleton";
 
 function StateDot({ state }: { state: string }) {
   const on = state === "online";
@@ -53,7 +54,7 @@ function DeviceCard({ n, onClick, active }: { n: TopoNode; onClick?: () => void;
 export default function TopologyPage() {
   const { data: d } = usePolling<Topology>(() => api.topology());
   const [sel, setSel] = useState<string | null>(null);
-  if (!d) return <div className="text-muted">Yüklənir...</div>;
+  if (!d) return <PageSkeleton stats={0} cards={2} />;
 
   const selClients = sel ? d.clientsByAp[sel] ?? [] : [];
 

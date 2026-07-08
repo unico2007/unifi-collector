@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { useRefresh } from "../lib/refresh";
+import GlobalSearch from "./GlobalSearch";
 
 const groups = [
   {
@@ -123,6 +124,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <header className="h-14 shrink-0 bg-white border-b border-line flex items-center gap-3 px-5">
           <h1 className="text-lg font-semibold">{title}</h1>
           <div className="ml-auto flex items-center gap-3">
+            <GlobalSearch />
             <div className="hidden md:flex items-center gap-1.5 text-xs text-muted">
               <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
               <span>Son yeniləmə {updatedAt}</span>

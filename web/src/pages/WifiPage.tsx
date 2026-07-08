@@ -1,10 +1,11 @@
 import { api, Wifi } from "../lib/api";
 import { usePolling } from "../lib/refresh";
 import { Card, Histogram, TopBars } from "../components/charts";
+import { PageSkeleton } from "../components/Skeleton";
 
 export default function WifiPage() {
   const { data: w } = usePolling<Wifi>(() => api.wifi());
-  if (!w) return <div className="text-muted">Yüklənir...</div>;
+  if (!w) return <PageSkeleton stats={0} cards={3} />;
 
   const totalQ = w.quality.good + w.quality.fair + w.quality.poor || 1;
 
