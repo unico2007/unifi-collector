@@ -11,6 +11,17 @@ import (
 	"go.uber.org/zap"
 )
 
+func TestVendorFor(t *testing.T) {
+	kerio := `<134>Jul  8 15:39:56 control KerioControl: DENY "Admin panel block" packet from internet`
+	if v := vendorFor(kerio, "unifi"); v != "kerio" {
+		t.Errorf("kerio line → %q, want kerio", v)
+	}
+	unifi := `<134>1 2026-07-08T15:39:56Z ap CEF:0|Ubiquiti|UniFi OS|...`
+	if v := vendorFor(unifi, "unifi"); v != "unifi" {
+		t.Errorf("unifi line → %q, want unifi (fallback)", v)
+	}
+}
+
 func TestParse_RFC3164(t *testing.T) {
 	p := parse("<34>Oct 11 22:14:15 aphost sshd: login failed for admin")
 	if p.severity != 2 { // 34 % 8 = 2 (critical/error range)

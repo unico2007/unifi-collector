@@ -1,6 +1,14 @@
 package web
 
-import "net/http"
+import (
+	"net"
+	"net/http"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+)
 
 type attackDTO struct {
 	Time   string `json:"time"`
@@ -19,18 +27,206 @@ type firewallDTO struct {
 	Attacks       []attackDTO `json:"attacks"`
 }
 
-// handleFirewall currently has no real data source: Kerio firewall logs are not
-// shipped to Loki yet, and no firewall metrics exist. It returns an honest empty
-// structure (no fabricated attacks/IPs) rather than mock data. Wire this up once
-// Kerio firewall syslog -> Loki is configured (see the gap report).
+// handleFirewall builds the Firewall page from Kerio Control firewall logs in
+// Loki (vendor="kerio"). Kerio ships every filter action over syslog; the
+// collector tags those lines vendor="kerio" (see internal/syslog). Until Kerio
+// logging is enabled the query returns nothing and every field is an honest zero
+// — no fabricated data.
 func (s *Server) handleFirewall(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, firewallDTO{
-		Allow:         []float64{},
-		Deny:          []float64{},
-		BlockedToday:  0,
+	ctx := r.Context()
+	lines := s.loki.recent(ctx, `{vendor="kerio"}`, 24*time.Hour, 5000)
+
+	out := firewallDTO{
+		Allow:         make([]float64, 24),
+		Deny:          make([]float64, 24),
 		TopBlockedIps: []talker{},
 		TopRules:      []kv{},
 		WebCategories: []kv{},
 		Attacks:       []attackDTO{},
+	}
+
+	ipCounts := map[string]int{}
+	ruleCounts := map[string]int{}
+	contentCounts := map[string]int{}
+
+	for _, ln := range lines {
+		ev, ok := parseKerio(ln.Msg)
+		if !ok {
+			continue
+		}
+		hour := hourOf(ln.Time)
+		if ev.action == "allow" {
+			if hour >= 0 {
+				out.Allow[hour]++
+			}
+			continue
+		}
+		// deny
+		if hour >= 0 {
+			out.Deny[hour]++
+		}
+		out.BlockedToday++
+		if ev.rule != "" {
+			ruleCounts[ev.rule]++
+		}
+		if isPublicIP(ev.srcIP) {
+			ipCounts[ev.srcIP]++
+		}
+		if ev.content != "" {
+			contentCounts[ev.content]++
+		}
+		if len(out.Attacks) < 50 { // newest first (recent() sorts desc)
+			out.Attacks = append(out.Attacks, attackDTO{
+				Time:   ln.Time,
+				Type:   ev.proto,
+				Source: ev.srcIP,
+				Action: "DENY",
+			})
+		}
+	}
+
+	out.TopBlockedIps = topTalkers(ipCounts, 8)
+	out.TopRules = topKV(ruleCounts, 8)
+	out.WebCategories = topKV(contentCounts, 8)
+
+	writeJSON(w, http.StatusOK, out)
+}
+
+// kerioEvent is the subset of a Kerio filter-log line the Firewall page needs.
+type kerioEvent struct {
+	action  string // "deny" | "allow"
+	rule    string // rule name ("Admin panel block", "Peer to Peer traffic")
+	srcIP   string // first IP in the line (the external attacker on inbound blocks)
+	proto   string // TCP | UDP | ICMP
+	content string // Kerio [Content] classification, e.g. "Suspected P2P"
+}
+
+var (
+	kerioIPRe    = regexp.MustCompile(`\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b`)
+	kerioProtoRe = regexp.MustCompile(`proto:([A-Za-z]+)`)
+)
+
+// parseKerio extracts the fields from one Kerio filter-log line. Handles both
+// shapes seen in the wild:
+//
+//	DENY "Admin panel block" packet from internet, proto:TCP, len:40, 1.2.3.4:5 -> 6.7.8.9:80, ...
+//	DENY [Rule] 'Peer to Peer traffic' [Connection] host (10.0.0.1):6881 -> peer (9.9.9.9):6881, UDP [Content] Suspected P2P
+func parseKerio(msg string) (kerioEvent, bool) {
+	if i := strings.Index(msg, "KerioControl:"); i >= 0 {
+		msg = strings.TrimSpace(msg[i+len("KerioControl:"):])
+	}
+	var ev kerioEvent
+	switch {
+	case strings.Contains(msg, "DENY"), strings.Contains(msg, "DROP"):
+		ev.action = "deny"
+	case strings.Contains(msg, "PERMIT"), strings.Contains(msg, "ALLOW"):
+		ev.action = "allow"
+	default:
+		return ev, false
+	}
+	ev.rule = kerioRule(msg)
+	ev.proto = kerioProto(msg)
+	ev.srcIP = kerioSrcIP(msg)
+	ev.content = kerioContent(msg)
+	return ev, true
+}
+
+// kerioRule pulls the rule name from either `[Rule] 'name'` or a `"name"` quote.
+func kerioRule(msg string) string {
+	if i := strings.Index(msg, "[Rule] '"); i >= 0 {
+		rest := msg[i+len("[Rule] '"):]
+		if j := strings.IndexByte(rest, '\''); j >= 0 {
+			return rest[:j]
+		}
+	}
+	if i := strings.IndexByte(msg, '"'); i >= 0 {
+		rest := msg[i+1:]
+		if j := strings.IndexByte(rest, '"'); j >= 0 {
+			return rest[:j]
+		}
+	}
+	return ""
+}
+
+func kerioProto(msg string) string {
+	if m := kerioProtoRe.FindStringSubmatch(msg); m != nil {
+		return strings.ToUpper(m[1])
+	}
+	for _, p := range []string{"ICMP", "TCP", "UDP"} {
+		if strings.Contains(msg, " "+p+" ") || strings.Contains(msg, ", "+p+" ") || strings.HasSuffix(msg, " "+p) {
+			return p
+		}
+	}
+	return ""
+}
+
+func kerioSrcIP(msg string) string {
+	if m := kerioIPRe.FindStringSubmatch(msg); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
+func kerioContent(msg string) string {
+	if i := strings.Index(msg, "[Content] "); i >= 0 {
+		return strings.TrimSpace(msg[i+len("[Content] "):])
+	}
+	return ""
+}
+
+// hourOf reads the hour (0-23) from a "15:04:05" time string, or -1.
+func hourOf(t string) int {
+	if len(t) < 2 {
+		return -1
+	}
+	h, err := strconv.Atoi(t[:2])
+	if err != nil || h < 0 || h > 23 {
+		return -1
+	}
+	return h
+}
+
+// isPublicIP reports whether s is a routable public address (excludes RFC1918,
+// loopback, link-local) — i.e. an external attacker worth ranking.
+func isPublicIP(s string) bool {
+	ip := net.ParseIP(s)
+	if ip == nil {
+		return false
+	}
+	return !ip.IsPrivate() && !ip.IsLoopback() && !ip.IsLinkLocalUnicast() && !ip.IsUnspecified()
+}
+
+// topTalkers / topKV rank a count map descending (ties broken by label) and cap.
+func topTalkers(m map[string]int, n int) []talker {
+	out := make([]talker, 0, len(m))
+	for k, v := range m {
+		out = append(out, talker{Label: k, Value: float64(v)})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Value != out[j].Value {
+			return out[i].Value > out[j].Value
+		}
+		return out[i].Label < out[j].Label
 	})
+	if len(out) > n {
+		out = out[:n]
+	}
+	return out
+}
+
+func topKV(m map[string]int, n int) []kv {
+	out := make([]kv, 0, len(m))
+	for k, v := range m {
+		out = append(out, kv{Label: k, Value: float64(v)})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Value != out[j].Value {
+			return out[i].Value > out[j].Value
+		}
+		return out[i].Label < out[j].Label
+	})
+	if len(out) > n {
+		out = out[:n]
+	}
+	return out
 }

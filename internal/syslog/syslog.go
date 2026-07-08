@@ -135,7 +135,7 @@ func (r *Receiver) handleConn(ctx context.Context, conn net.Conn) {
 func (r *Receiver) handle(ctx context.Context, raw string) {
 	m := parse(raw)
 	ev := models.Event{
-		Vendor:     r.cfg.Vendor,
+		Vendor:     vendorFor(raw, r.cfg.Vendor),
 		Site:       r.cfg.Site,
 		Timestamp:  m.timestamp,
 		Type:       models.EventUnknown,
@@ -147,6 +147,18 @@ func (r *Receiver) handle(ctx context.Context, raw string) {
 	if err := r.sink.WriteEvents(ctx, []models.Event{ev}); err != nil {
 		r.log.Warn("syslog: forwarding message failed", zap.Error(err))
 	}
+}
+
+// vendorFor routes a syslog line to the right vendor label. One receiver serves
+// both UniFi (CEF) and Kerio Control on the same port; Kerio stamps every message
+// with its "KerioControl" app-name, so those are relabelled vendor="kerio" while
+// everything else keeps the configured default (UniFi). This is what lets the
+// Firewall page query {vendor="kerio"} without a second listener.
+func vendorFor(raw, fallback string) string {
+	if strings.Contains(raw, "KerioControl") {
+		return "kerio"
+	}
+	return fallback
 }
 
 // parsed holds the fields extracted from a syslog line.
