@@ -165,16 +165,6 @@ export const api = {
   alerts: () => get<AlertsData>("/alerts", mockAlerts),
   topology: () => get<Topology>("/topology", mockTopology),
   device: (name: string) => get<DeviceDetail>(`/devices/${encodeURIComponent(name)}`, mockDeviceDetail(name)),
-  login: async (username: string, password: string, role: string) => {
-    const r = await fetch("/api/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ username, password, role }),
-    });
-    if (!r.ok) throw new Error("auth");
-    return (await r.json()) as { username: string; role: "admin" | "guest" };
-  },
   aiChat: async (question: string): Promise<AiChat> => {
     try {
       const r = await fetch("/api/ai/chat", {

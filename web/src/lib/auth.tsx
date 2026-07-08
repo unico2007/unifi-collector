@@ -9,7 +9,7 @@ export interface User {
 interface AuthCtx {
   user: User | null;
   loading: boolean;
-  login: (username: string, password: string, role: Role) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -47,22 +47,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  async function login(username: string, password: string, role: Role) {
-    let u: User;
+  async function login(username: string, password: string) {
+    let r: Response;
     try {
-      const r = await fetch("/api/login", {
+      r = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ username, password, role }),
+        body: JSON.stringify({ username, password }),
       });
-      if (!r.ok) throw new Error("auth");
-      u = (await r.json()) as User;
     } catch {
-      // No backend yet — demo mode. Accept the chosen role locally.
+      // fetch threw = the backend is unreachable (standalone dev with no BFF).
+      // Only THEN fall back to demo mode. A reachable backend that rejects the
+      // credentials returns a 401 response (not a throw) and must be honored —
+      // otherwise any password would "log in", which is the whole bug this
+      // guards against.
       if (!username) throw new Error("İstifadəçi adı və ya parol yanlışdır");
-      u = { username, role };
+      const demo: User = { username, role: "admin" }; // dev-only: full UI browsable
+      localStorage.setItem("unico_user", JSON.stringify(demo));
+      setUser(demo);
+      return;
     }
+    // Backend answered: trust its verdict. 401/any non-2xx = wrong credentials.
+    if (!r.ok) throw new Error("İstifadəçi adı və ya parol yanlışdır");
+    // Role comes from the server (the account's DB role), never the UI toggle.
+    const u = (await r.json()) as User;
     localStorage.setItem("unico_user", JSON.stringify(u));
     setUser(u);
   }

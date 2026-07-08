@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth, Role } from "../lib/auth";
+import { useAuth } from "../lib/auth";
 
 export default function LoginPage() {
   const { login } = useAuth();
   const nav = useNavigate();
-  const [role, setRole] = useState<Role>("admin");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
@@ -17,7 +16,7 @@ export default function LoginPage() {
     setErr("");
     setBusy(true);
     try {
-      await login(username, password, role);
+      await login(username, password);
       nav("/");
     } catch {
       setErr("İstifadəçi adı və ya parol yanlışdır");
@@ -45,21 +44,6 @@ export default function LoginPage() {
           <div className="flex items-center gap-2 mb-6">
             <span className="w-7 h-7 rounded-lg bg-brand-500 text-white grid place-items-center font-semibold">U</span>
             <span className="font-semibold text-lg">Daxil ol</span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-1 p-1 bg-page rounded-lg mb-5">
-            {(["admin", "guest"] as Role[]).map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setRole(r)}
-                className={`h-9 rounded-md text-sm font-medium transition-colors ${
-                  role === r ? "bg-white text-brand-700 shadow-sm" : "text-muted"
-                }`}
-              >
-                {r === "admin" ? "Admin" : "Qonaq"}
-              </button>
-            ))}
           </div>
 
           <label className="block text-sm text-muted mb-1">İstifadəçi adı</label>
