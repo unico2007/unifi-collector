@@ -106,6 +106,20 @@ export interface AiChat {
   result?: string;
 }
 
+export interface Alert {
+  level: "critical" | "warning";
+  rule: string;
+  target: string;
+  message: string;
+  value: string;
+}
+
+export interface AlertsData {
+  active: Alert[];
+  counts: { critical: number; warning: number };
+  rules: { name: string; condition: string; level: string }[];
+}
+
 export interface AiInsight {
   level: "info" | "warn" | "error";
   title: string;
@@ -126,6 +140,7 @@ export const api = {
   traffic: () => get<Traffic>("/traffic", mockTraffic),
   wifi: () => get<Wifi>("/wifi", mockWifi),
   firewall: () => get<Firewall>("/firewall", mockFirewall),
+  alerts: () => get<AlertsData>("/alerts", mockAlerts),
   device: (name: string) => get<DeviceDetail>(`/devices/${encodeURIComponent(name)}`, mockDeviceDetail(name)),
   login: async (username: string, password: string, role: string) => {
     const r = await fetch("/api/login", {
@@ -392,6 +407,20 @@ const mockFirewall: Firewall = {
     { time: "12:03:10", type: "Port scan", source: "45.148.10.2", action: "Deny" },
     { time: "11:51:40", type: "Brute force (SSH)", source: "193.32.162.9", action: "Deny" },
     { time: "11:22:05", type: "Spoofed source", source: "185.34.9.7", action: "Deny" },
+  ],
+};
+
+const mockAlerts: AlertsData = {
+  active: [
+    { level: "critical", rule: "Cihaz offline", target: "AP-Zirzəmi", message: "AP-Zirzəmi (uap) offline-dır", value: "offline" },
+    { level: "warning", rule: "CPU yüksək", target: "AP-Ofis-1", message: "AP-Ofis-1: CPU 88%", value: "88%" },
+  ],
+  counts: { critical: 1, warning: 1 },
+  rules: [
+    { name: "Cihaz offline", condition: "unifi_device_up == 0", level: "critical" },
+    { name: "CPU yüksək", condition: "unifi_device_cpu_percent > 85", level: "warning" },
+    { name: "Yaddaş yüksək", condition: "unifi_device_memory_percent > 90", level: "warning" },
+    { name: "Subsystem problemi", condition: "unifi_health_status < 1", level: "warning" },
   ],
 };
 
