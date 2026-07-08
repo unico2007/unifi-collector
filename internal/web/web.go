@@ -73,6 +73,7 @@ func New(cfg Config, users *userStore, log *zap.Logger) (*Server, error) {
 	mux.HandleFunc("GET /api/traffic", s.requireAuth(s.handleTraffic))
 	mux.HandleFunc("GET /api/firewall", s.requireAuth(s.handleFirewall))
 	mux.HandleFunc("GET /api/alerts", s.requireAuth(s.handleAlerts))
+	mux.HandleFunc("GET /api/topology", s.requireAuth(s.handleTopology))
 	mux.HandleFunc("GET /api/logs/categories", s.requireAuth(s.handleLogsCategories))
 
 	// AI (auth-gated proxy to the AI service).

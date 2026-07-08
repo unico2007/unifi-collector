@@ -120,6 +120,28 @@ export interface AlertsData {
   rules: { name: string; condition: string; level: string }[];
 }
 
+export interface TopoNode {
+  name: string;
+  type: string;
+  vendor: string;
+  model: string;
+  ip: string;
+  state: string;
+  clients: number;
+}
+export interface TopoClient {
+  name: string;
+  mac: string;
+  rssi: number;
+}
+export interface Topology {
+  edge: TopoNode[];
+  switches: TopoNode[];
+  aps: TopoNode[];
+  clientsByAp: Record<string, TopoClient[]>;
+  stats: { switches: number; aps: number; clients: number };
+}
+
 export interface AiInsight {
   level: "info" | "warn" | "error";
   title: string;
@@ -141,6 +163,7 @@ export const api = {
   wifi: () => get<Wifi>("/wifi", mockWifi),
   firewall: () => get<Firewall>("/firewall", mockFirewall),
   alerts: () => get<AlertsData>("/alerts", mockAlerts),
+  topology: () => get<Topology>("/topology", mockTopology),
   device: (name: string) => get<DeviceDetail>(`/devices/${encodeURIComponent(name)}`, mockDeviceDetail(name)),
   login: async (username: string, password: string, role: string) => {
     const r = await fetch("/api/login", {
@@ -422,6 +445,29 @@ const mockAlerts: AlertsData = {
     { name: "Yaddaş yüksək", condition: "unifi_device_memory_percent > 90", level: "warning" },
     { name: "Subsystem problemi", condition: "unifi_health_status < 1", level: "warning" },
   ],
+};
+
+const mockTopology: Topology = {
+  edge: [
+    { name: "Kerio-Firewall", type: "interface", vendor: "kerio", model: "-", ip: "89.147.252.244", state: "online", clients: 0 },
+    { name: "USG-Gateway", type: "ugw", vendor: "unifi", model: "USG-Pro", ip: "10.10.0.1", state: "online", clients: 0 },
+  ],
+  switches: [
+    { name: "USW-Core", type: "usw", vendor: "unifi", model: "US-24", ip: "10.10.0.2", state: "online", clients: 0 },
+  ],
+  aps: [
+    { name: "AP-Ofis-1", type: "uap", vendor: "unifi", model: "U6-Pro", ip: "10.10.0.11", state: "online", clients: 8 },
+    { name: "AP-Ofis-2", type: "uap", vendor: "unifi", model: "U6-Lite", ip: "10.10.0.12", state: "online", clients: 6 },
+    { name: "AP-Zirzəmi", type: "uap", vendor: "unifi", model: "U6-Lite", ip: "10.10.0.13", state: "offline", clients: 0 },
+  ],
+  clientsByAp: {
+    "AP-Ofis-1": [
+      { name: "a.mammadov-mbp", mac: "3c:22:fb:aa:01", rssi: -48 },
+      { name: "k.huseynov-pc", mac: "d8:cb:8a:cc:03", rssi: -72 },
+    ],
+    "AP-Ofis-2": [{ name: "r.aliyeva-iphone", mac: "a4:83:e7:bb:02", rssi: -66 }],
+  },
+  stats: { switches: 1, aps: 3, clients: 14 },
 };
 
 function mockDeviceDetail(name: string): DeviceDetail {

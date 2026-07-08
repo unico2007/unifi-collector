@@ -12,6 +12,7 @@ import WifiPage from "./pages/WifiPage";
 import FirewallPage from "./pages/FirewallPage";
 import AiChatPage from "./pages/AiChatPage";
 import AlertsPage from "./pages/AlertsPage";
+import TopologyPage from "./pages/TopologyPage";
 
 export default function App() {
   const { user } = useAuth();
@@ -36,6 +37,7 @@ export default function App() {
         <Route path="/clients" element={<ClientsPage />} />
         <Route path="/firewall" element={<FirewallPage />} />
         <Route path="/alerts" element={<AlertsPage />} />
+        <Route path="/topology" element={<TopologyPage />} />
         <Route path="/logs" element={<LogsPage />} />
         <Route path="/ai" element={<AiChatPage />} />
         <Route path="/login" element={<Navigate to="/" replace />} />

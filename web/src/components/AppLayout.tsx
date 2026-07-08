@@ -24,6 +24,7 @@ const groups = [
     items: [
       { to: "/firewall", label: "Firewall", icon: "shield" },
       { to: "/alerts", label: "Alertlər", icon: "bell" },
+      { to: "/topology", label: "Topologiya", icon: "share" },
       { to: "/logs", label: "Loglar", icon: "list" },
     ],
   },
@@ -38,6 +39,7 @@ const titles: Record<string, string> = {
   "/clients": "Klientlər",
   "/firewall": "Firewall / Təhlükəsizlik",
   "/alerts": "Alertlər",
+  "/topology": "Topologiya",
   "/logs": "Loglar",
 };
 
@@ -55,6 +57,7 @@ function Icon({ name, className = "w-5 h-5" }: { name: string; className?: strin
     shield: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
     spark: "M12 3l1.9 4.8L18 9l-4.1 1.2L12 15l-1.9-4.8L6 9l4.1-1.2zM19 14l.9 2.1L22 17l-2.1.9L19 20l-.9-2.1L16 17l2.1-.9z",
     bell: "M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0",
+    share: "M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM8.6 13.5l6.8 3.9M15.4 6.6l-6.8 3.9",
   };
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
