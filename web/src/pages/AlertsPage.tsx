@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
 import { api, AlertsData } from "../lib/api";
+import { usePolling } from "../lib/refresh";
 import { StatCard } from "../components/charts";
 
 const levelStyle: Record<string, { stripe: string; pill: string; label: string }> = {
@@ -8,10 +8,7 @@ const levelStyle: Record<string, { stripe: string; pill: string; label: string }
 };
 
 export default function AlertsPage() {
-  const [d, setD] = useState<AlertsData | null>(null);
-  useEffect(() => {
-    api.alerts().then(setD);
-  }, []);
+  const { data: d } = usePolling<AlertsData>(() => api.alerts());
   if (!d) return <div className="text-muted">Yüklənir...</div>;
 
   const healthy = d.active.length === 0;

@@ -1,17 +1,19 @@
-import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, DeviceDetail } from "../lib/api";
+import { usePolling } from "../lib/refresh";
 import { Card, AreaLine, Gauge } from "../components/charts";
+
+const fmtMbps = (v: number) => (v >= 10 ? Math.round(v) : Math.round(v * 10) / 10);
 
 export default function DeviceDetailPage() {
   const { name = "" } = useParams();
-  const [d, setD] = useState<DeviceDetail | null>(null);
-  useEffect(() => {
-    api.device(name).then(setD);
-  }, [name]);
+  const { data: d } = usePolling<DeviceDetail>(() => api.device(name), [name]);
   if (!d) return <div className="text-muted">Yüklənir...</div>;
 
   const dev = d.device;
+  const last = (a: number[]) => (a.length ? a[a.length - 1] : 0);
+  const curRx = fmtMbps(last(d.rx));
+  const curTx = fmtMbps(last(d.tx));
   return (
     <div className="space-y-4">
       <Link to="/devices" className="text-sm text-brand-600 hover:underline">← Cihazlar</Link>
@@ -38,8 +40,8 @@ export default function DeviceDetailPage() {
         <Card title="Trafik (RX/TX indi)">
           <div className="grid place-items-center h-32 text-center">
             <div>
-              <div className="text-2xl font-semibold text-brand-600">42 <span className="text-sm text-muted">Mbps ↓</span></div>
-              <div className="text-2xl font-semibold text-green-600 mt-1">14 <span className="text-sm text-muted">Mbps ↑</span></div>
+              <div className="text-2xl font-semibold text-brand-600">{curRx} <span className="text-sm text-muted">Mbps ↓</span></div>
+              <div className="text-2xl font-semibold text-green-600 mt-1">{curTx} <span className="text-sm text-muted">Mbps ↑</span></div>
             </div>
           </div>
         </Card>

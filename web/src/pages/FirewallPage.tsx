@@ -1,12 +1,9 @@
-import { useEffect, useState } from "react";
 import { api, Firewall } from "../lib/api";
+import { usePolling } from "../lib/refresh";
 import { Card, DualArea, StatCard, TopBars } from "../components/charts";
 
 export default function FirewallPage() {
-  const [f, setF] = useState<Firewall | null>(null);
-  useEffect(() => {
-    api.firewall().then(setF);
-  }, []);
+  const { data: f } = usePolling<Firewall>(() => api.firewall());
   if (!f) return <div className="text-muted">Yüklənir...</div>;
 
   return (

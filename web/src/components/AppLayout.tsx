@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
+import { useRefresh } from "../lib/refresh";
 
 const groups = [
   {
@@ -71,9 +72,13 @@ function Icon({ name, className = "w-5 h-5" }: { name: string; className?: strin
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
+  const { refresh, refreshing, lastUpdated } = useRefresh();
   const loc = useLocation();
   const title = titles[loc.pathname] ?? (loc.pathname.startsWith("/devices/") ? "Cihaz detalı" : "");
   const initials = (user?.username ?? "?").slice(0, 2).toUpperCase();
+  const updatedAt = lastUpdated
+    ? lastUpdated.toLocaleTimeString("az", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : "—";
 
   return (
     <div className="flex h-full">
@@ -118,11 +123,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <header className="h-14 shrink-0 bg-white border-b border-line flex items-center gap-3 px-5">
           <h1 className="text-lg font-semibold">{title}</h1>
           <div className="ml-auto flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 h-9 px-3 rounded-lg border border-line text-muted text-sm">
-              <Icon name="search" className="w-4 h-4" />
-              <span>Axtar...</span>
+            <div className="hidden md:flex items-center gap-1.5 text-xs text-muted">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+              <span>Son yeniləmə {updatedAt}</span>
             </div>
-            <button className="btn" aria-label="Yenilə"><Icon name="refresh" className="w-4 h-4" /></button>
+            <button className="btn" aria-label="Yenilə" title="Yenilə" onClick={refresh} disabled={refreshing}>
+              <Icon name="refresh" className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+            </button>
             <div className="flex items-center gap-2">
               {user?.role === "guest" && (
                 <span className="pill bg-amber-50 text-amber-700">Yalnız baxış</span>

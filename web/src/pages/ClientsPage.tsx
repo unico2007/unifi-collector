@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { api, Client } from "../lib/api";
+import { usePolling } from "../lib/refresh";
 
 function Signal({ rssi }: { rssi: number }) {
   // -50 great, -70 ok, -80 poor
@@ -18,12 +19,9 @@ function Signal({ rssi }: { rssi: number }) {
 }
 
 export default function ClientsPage() {
-  const [clients, setClients] = useState<Client[]>([]);
+  const { data } = usePolling<Client[]>(() => api.clients());
+  const clients = data ?? [];
   const [q, setQ] = useState("");
-
-  useEffect(() => {
-    api.clients().then(setClients);
-  }, []);
 
   const rows = useMemo(
     () => clients.filter((c) => q === "" || c.name.toLowerCase().includes(q.toLowerCase()) || c.mac.includes(q)),

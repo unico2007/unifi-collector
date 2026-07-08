@@ -1,21 +1,25 @@
-import { useEffect, useState } from "react";
 import { api, Traffic } from "../lib/api";
+import { usePolling } from "../lib/refresh";
 import { Card, DualArea, StatCard, TopBars } from "../components/charts";
 
+const fmtMbps = (v: number) => `${v >= 10 ? Math.round(v) : Math.round(v * 10) / 10} Mbps`;
+
 export default function TrafficPage() {
-  const [t, setT] = useState<Traffic | null>(null);
-  useEffect(() => {
-    api.traffic().then(setT);
-  }, []);
+  const { data: t } = usePolling<Traffic>(() => api.traffic());
   if (!t) return <div className="text-muted">Yüklənir...</div>;
+
+  // Derived from the real Mbps series the BFF returns (no hardcoded figures).
+  const last = (a: number[]) => (a.length ? a[a.length - 1] : 0);
+  const current = last(t.rx) + last(t.tx);
+  const peak = t.rx.length ? Math.max(...t.rx.map((v, i) => v + (t.tx[i] ?? 0))) : 0;
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Endirmə (RX)" value={t.totalRx} tone="brand" spark={t.rx} icon={<Ico d="M12 5v14M19 12l-7 7-7-7" />} />
         <StatCard label="Yükləmə (TX)" value={t.totalTx} tone="green" spark={t.tx} icon={<Ico d="M12 19V5M5 12l7-7 7 7" />} />
-        <StatCard label="Aktiv sessiyalar" value="1,204" tone="slate" icon={<Ico d="M22 12h-4l-3 9L9 3l-3 9H2" />} />
-        <StatCard label="Ən yüksək sürət" value="486 Mbps" tone="amber" icon={<Ico d="M13 2L3 14h9l-1 8 10-12h-9z" />} />
+        <StatCard label="Cari sürət" value={fmtMbps(current)} sub="RX+TX indi" tone="slate" icon={<Ico d="M22 12h-4l-3 9L9 3l-3 9H2" />} />
+        <StatCard label="Ən yüksək sürət" value={fmtMbps(peak)} sub="24 saat zirvə" tone="amber" icon={<Ico d="M13 2L3 14h9l-1 8 10-12h-9z" />} />
       </div>
 
       <Card title="Bant genişliyi (24 saat)" subtitle="Endirmə və yükləmə">

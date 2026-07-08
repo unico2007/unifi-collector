@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, Device } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { usePolling, useRefresh } from "../lib/refresh";
 
 function VendorBadge({ v }: { v: string }) {
   const cls = v === "unifi" ? "bg-brand-50 text-brand-700" : "bg-orange-50 text-orange-700";
@@ -22,14 +23,12 @@ function Bar({ pct }: { pct: number }) {
 
 export default function DevicesPage() {
   const { user } = useAuth();
-  const [devices, setDevices] = useState<Device[]>([]);
+  const { refresh, refreshing } = useRefresh();
+  const { data } = usePolling<Device[]>(() => api.devices());
+  const devices = data ?? [];
   const [vendor, setVendor] = useState("all");
   const [status, setStatus] = useState("all");
   const [q, setQ] = useState("");
-
-  useEffect(() => {
-    api.devices().then(setDevices);
-  }, []);
 
   const rows = useMemo(
     () =>
@@ -56,7 +55,11 @@ export default function DevicesPage() {
           <option value="offline">Offline</option>
         </select>
         <input className="input flex-1 min-w-[160px]" placeholder="Cihaz axtar..." value={q} onChange={(e) => setQ(e.target.value)} />
-        {user?.role === "admin" && <button className="btn btn-primary">Yenilə</button>}
+        {user?.role === "admin" && (
+          <button className="btn btn-primary" onClick={refresh} disabled={refreshing}>
+            {refreshing ? "Yenilənir..." : "Yenilə"}
+          </button>
+        )}
       </div>
 
       <div className="card overflow-auto">

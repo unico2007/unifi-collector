@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api, Topology, TopoNode } from "../lib/api";
+import { usePolling } from "../lib/refresh";
 
 function StateDot({ state }: { state: string }) {
   const on = state === "online";
@@ -50,11 +51,8 @@ function DeviceCard({ n, onClick, active }: { n: TopoNode; onClick?: () => void;
 }
 
 export default function TopologyPage() {
-  const [d, setD] = useState<Topology | null>(null);
+  const { data: d } = usePolling<Topology>(() => api.topology());
   const [sel, setSel] = useState<string | null>(null);
-  useEffect(() => {
-    api.topology().then(setD);
-  }, []);
   if (!d) return <div className="text-muted">Yüklənir...</div>;
 
   const selClients = sel ? d.clientsByAp[sel] ?? [] : [];

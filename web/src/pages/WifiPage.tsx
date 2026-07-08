@@ -1,12 +1,9 @@
-import { useEffect, useState } from "react";
 import { api, Wifi } from "../lib/api";
+import { usePolling } from "../lib/refresh";
 import { Card, Histogram, TopBars } from "../components/charts";
 
 export default function WifiPage() {
-  const [w, setW] = useState<Wifi | null>(null);
-  useEffect(() => {
-    api.wifi().then(setW);
-  }, []);
+  const { data: w } = usePolling<Wifi>(() => api.wifi());
   if (!w) return <div className="text-muted">Yüklənir...</div>;
 
   const totalQ = w.quality.good + w.quality.fair + w.quality.poor || 1;

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, LogCategory } from "../lib/api";
+import { usePolling } from "../lib/refresh";
 
 const pillClass: Record<string, string> = {
   ok: "bg-green-50 text-green-700",
@@ -14,15 +15,14 @@ function Cell({ v }: { v: string | { text: string; kind: string } }) {
 }
 
 export default function LogsPage() {
-  const [cats, setCats] = useState<LogCategory[]>([]);
+  const { data } = usePolling<LogCategory[]>(() => api.logCategories());
+  const cats = data ?? [];
   const [active, setActive] = useState<string>("filter");
 
+  // Keep the selected tab valid as categories load / change.
   useEffect(() => {
-    api.logCategories().then((c) => {
-      setCats(c);
-      if (c.length && !c.find((x) => x.key === active)) setActive(c[0].key);
-    });
-  }, []);
+    if (cats.length && !cats.find((x) => x.key === active)) setActive(cats[0].key);
+  }, [cats, active]);
 
   const groups = useMemo(() => {
     const g: Record<string, LogCategory[]> = { unifi: [], kerio: [] };

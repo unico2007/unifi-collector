@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
 import { api, Overview, AiInsights, AiInsight } from "../lib/api";
+import { usePolling } from "../lib/refresh";
 import { AreaLine, Donut, StatCard } from "../components/charts";
 
 function SvgIcon({ d }: { d: string }) {
@@ -31,11 +31,8 @@ function InsightIcon() {
 }
 
 function AiInsightsPanel() {
-  const [d, setD] = useState<AiInsights | null>(null);
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    api.aiInsights().then(setD).finally(() => setLoading(false));
-  }, []);
+  // AI insights run an LLM synthesis server-side, so poll them slower than data.
+  const { data: d, loading } = usePolling<AiInsights>(() => api.aiInsights(), [], 60000);
   return (
     <div className="card p-4">
       <div className="flex items-center gap-2 mb-3">
@@ -61,10 +58,7 @@ function AiInsightsPanel() {
 }
 
 export default function OverviewPage() {
-  const [d, setD] = useState<Overview | null>(null);
-  useEffect(() => {
-    api.overview().then(setD);
-  }, []);
+  const { data: d } = usePolling<Overview>(() => api.overview());
   if (!d) return <div className="text-muted">Yüklənir...</div>;
 
   return (
