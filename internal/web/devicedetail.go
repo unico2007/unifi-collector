@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 )
 
 type detailClient struct {
@@ -56,11 +55,12 @@ func (s *Server) handleDeviceDetail(w http.ResponseWriter, r *http.Request) {
 		dev.Uptime = formatUptime(v)
 	}
 
+	dur, step := parseRange(r.URL.Query().Get("range"))
 	d := deviceDetailDTO{Device: dev}
-	d.CPU = mustSeries(s.prom.rangeSeries(ctx, `unifi_device_cpu_percent`+sel, 24*time.Hour, time.Hour))
-	d.Memory = mustSeries(s.prom.rangeSeries(ctx, `unifi_device_memory_percent`+sel, 24*time.Hour, time.Hour))
-	d.Rx = toMbps(mustSeries(s.prom.rangeSeries(ctx, `rate(unifi_device_rx_bytes`+sel+`[5m])`, 24*time.Hour, time.Hour)))
-	d.Tx = toMbps(mustSeries(s.prom.rangeSeries(ctx, `rate(unifi_device_tx_bytes`+sel+`[5m])`, 24*time.Hour, time.Hour)))
+	d.CPU = mustSeries(s.prom.rangeSeries(ctx, `unifi_device_cpu_percent`+sel, dur, step))
+	d.Memory = mustSeries(s.prom.rangeSeries(ctx, `unifi_device_memory_percent`+sel, dur, step))
+	d.Rx = toMbps(mustSeries(s.prom.rangeSeries(ctx, `rate(unifi_device_rx_bytes`+sel+`[5m])`, dur, step)))
+	d.Tx = toMbps(mustSeries(s.prom.rangeSeries(ctx, `rate(unifi_device_tx_bytes`+sel+`[5m])`, dur, step)))
 
 	// Clients associated with this AP. The client "ap" label holds the AP's
 	// MAC, so match on the device MAC rather than its name.

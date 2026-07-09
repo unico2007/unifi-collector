@@ -1,12 +1,14 @@
-import { api, Traffic } from "../lib/api";
+import { useState } from "react";
+import { api, Traffic, TimeRange } from "../lib/api";
 import { usePolling } from "../lib/refresh";
-import { Card, DualArea, lastHoursTicks, StatCard, TopBars } from "../components/charts";
+import { Card, DualArea, RangeSelector, rangeLabel, rangeTicks, StatCard, TopBars } from "../components/charts";
 import { PageSkeleton } from "../components/Skeleton";
 
 const fmtMbps = (v: number) => `${v >= 10 ? Math.round(v) : Math.round(v * 10) / 10} Mbps`;
 
 export default function TrafficPage() {
-  const { data: t } = usePolling<Traffic>(() => api.traffic());
+  const [range, setRange] = useState<TimeRange>("24h");
+  const { data: t } = usePolling<Traffic>(() => api.traffic(range), [range]);
   if (!t) return <PageSkeleton stats={4} cards={2} />;
 
   // Derived from the real Mbps series the BFF returns (no hardcoded figures).
@@ -23,8 +25,8 @@ export default function TrafficPage() {
         <StatCard label="Ən yüksək sürət" value={fmtMbps(peak)} sub="24 saat zirvə" tone="amber" icon={<Ico d="M13 2L3 14h9l-1 8 10-12h-9z" />} />
       </div>
 
-      <Card title="Bant genişliyi (24 saat)" subtitle="Endirmə və yükləmə">
-        <DualArea a={t.rx} b={t.tx} xLabels={lastHoursTicks(24)} />
+      <Card title={`Bant genişliyi (${rangeLabel[range]})`} subtitle="Endirmə və yükləmə" right={<RangeSelector value={range} onChange={setRange} />}>
+        <DualArea a={t.rx} b={t.tx} xLabels={rangeTicks(range)} />
       </Card>
 
       <div className="grid lg:grid-cols-2 gap-4">

@@ -3,6 +3,7 @@
 // no external chart library (keeps the Docker build lean).
 
 import { ReactNode, useId, useMemo, useState } from "react";
+import { TimeRange } from "../lib/api";
 
 const BRAND = "#1466d6";
 const GREEN = "#16a34a";
@@ -301,6 +302,57 @@ export function lastHoursTicks(hoursBack: number, count = 5): string[] {
     out.push(t.toLocaleTimeString("az", { hour: "2-digit", minute: "2-digit" }));
   }
   return out;
+}
+
+const rangeHours: Record<TimeRange, number> = { "1h": 1, "6h": 6, "24h": 24, "7d": 168 };
+
+// rangeTicks builds `count` evenly-spaced axis labels for a series spanning the
+// given range ending now — clock times for hourly ranges, dates for 7 days.
+export function rangeTicks(range: TimeRange, count = 5): string[] {
+  const hoursBack = rangeHours[range];
+  const now = Date.now();
+  const out: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const t = new Date(now - (hoursBack - (hoursBack * i) / (count - 1)) * 3600000);
+    out.push(
+      range === "7d"
+        ? t.toLocaleDateString("az", { day: "2-digit", month: "2-digit" })
+        : t.toLocaleTimeString("az", { hour: "2-digit", minute: "2-digit" }),
+    );
+  }
+  return out;
+}
+
+export const rangeLabel: Record<TimeRange, string> = {
+  "1h": "son 1 saat",
+  "6h": "son 6 saat",
+  "24h": "son 24 saat",
+  "7d": "son 7 gün",
+};
+
+// RangeSelector — segmented control for picking a chart time window.
+export function RangeSelector({ value, onChange }: { value: TimeRange; onChange: (r: TimeRange) => void }) {
+  const opts: [TimeRange, string][] = [
+    ["1h", "1s"],
+    ["6h", "6s"],
+    ["24h", "24s"],
+    ["7d", "7g"],
+  ];
+  return (
+    <div className="inline-flex gap-0.5 rounded-lg border border-line p-0.5">
+      {opts.map(([r, label]) => (
+        <button
+          key={r}
+          onClick={() => onChange(r)}
+          className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+            value === r ? "bg-brand-500 text-white font-medium" : "text-muted hover:text-ink"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export function AreaLine({ data, color = BRAND, height = 150, unit = "", xLabels }: { data: number[]; color?: string; height?: number; unit?: string; xLabels?: string[] }) {

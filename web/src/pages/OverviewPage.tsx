@@ -1,6 +1,7 @@
-import { api, Overview, AiInsights, AiInsight } from "../lib/api";
+import { useState } from "react";
+import { api, Overview, AiInsights, AiInsight, TimeRange } from "../lib/api";
 import { usePolling } from "../lib/refresh";
-import { AreaLine, Donut, lastHoursTicks, StatCard } from "../components/charts";
+import { AreaLine, Donut, RangeSelector, rangeLabel, rangeTicks, StatCard } from "../components/charts";
 import { PageSkeleton } from "../components/Skeleton";
 
 function SvgIcon({ d }: { d: string }) {
@@ -59,7 +60,8 @@ function AiInsightsPanel() {
 }
 
 export default function OverviewPage() {
-  const { data: d } = usePolling<Overview>(() => api.overview());
+  const [range, setRange] = useState<TimeRange>("24h");
+  const { data: d } = usePolling<Overview>(() => api.overview(range), [range]);
   if (!d) return <PageSkeleton stats={4} cards={2} />;
 
   return (
@@ -75,8 +77,11 @@ export default function OverviewPage() {
 
       <div className="grid lg:grid-cols-3 gap-4">
         <div className="card p-4 lg:col-span-2">
-          <div className="text-sm font-semibold mb-3">Klient sayı (24 saat)</div>
-          <AreaLine data={d.clientSeries} height={160} xLabels={lastHoursTicks(24)} />
+          <div className="flex items-center mb-3">
+            <div className="text-sm font-semibold">Klient sayı ({rangeLabel[range]})</div>
+            <div className="ml-auto"><RangeSelector value={range} onChange={setRange} /></div>
+          </div>
+          <AreaLine data={d.clientSeries} height={160} xLabels={rangeTicks(range)} />
         </div>
         <div className="card p-4 flex flex-col">
           <div className="text-sm font-semibold mb-2">Cihaz statusu</div>

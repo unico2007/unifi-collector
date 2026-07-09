@@ -100,6 +100,22 @@ type promRangeResponse struct {
 	Error string `json:"error"`
 }
 
+// parseRange maps a UI range key ("1h"/"6h"/"24h"/"7d") to a query duration and
+// step. Steps are chosen to keep each series around 24-30 points so the charts
+// stay readable at every zoom level. Unknown values default to 24h.
+func parseRange(r string) (dur, step time.Duration) {
+	switch r {
+	case "1h":
+		return time.Hour, 2 * time.Minute
+	case "6h":
+		return 6 * time.Hour, 15 * time.Minute
+	case "7d":
+		return 7 * 24 * time.Hour, 6 * time.Hour
+	default:
+		return 24 * time.Hour, time.Hour
+	}
+}
+
 // rangeSeries runs a range query over the last dur (single-series expected) and
 // returns the values as a plain float slice for the frontend charts.
 func (c *promClient) rangeSeries(ctx context.Context, expr string, dur time.Duration, step time.Duration) ([]float64, error) {

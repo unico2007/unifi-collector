@@ -1,14 +1,16 @@
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { api, DeviceDetail } from "../lib/api";
+import { api, DeviceDetail, TimeRange } from "../lib/api";
 import { usePolling } from "../lib/refresh";
-import { Card, AreaLine, Gauge, lastHoursTicks } from "../components/charts";
+import { Card, AreaLine, Gauge, RangeSelector, rangeLabel, rangeTicks } from "../components/charts";
 import { PageSkeleton } from "../components/Skeleton";
 
 const fmtMbps = (v: number) => (v >= 10 ? Math.round(v) : Math.round(v * 10) / 10);
 
 export default function DeviceDetailPage() {
   const { name = "" } = useParams();
-  const { data: d } = usePolling<DeviceDetail>(() => api.device(name), [name]);
+  const [range, setRange] = useState<TimeRange>("24h");
+  const { data: d } = usePolling<DeviceDetail>(() => api.device(name, range), [name, range]);
   if (!d) return <PageSkeleton stats={4} cards={2} />;
 
   const dev = d.device;
@@ -48,9 +50,12 @@ export default function DeviceDetailPage() {
         </Card>
       </div>
 
+      <div className="flex justify-end">
+        <RangeSelector value={range} onChange={setRange} />
+      </div>
       <div className="grid lg:grid-cols-2 gap-4">
-        <Card title="CPU (24 saat)"><AreaLine data={d.cpu} xLabels={lastHoursTicks(24)} /></Card>
-        <Card title="Yaddaş (24 saat)"><AreaLine data={d.memory} color="#f59e0b" xLabels={lastHoursTicks(24)} /></Card>
+        <Card title={`CPU (${rangeLabel[range]})`}><AreaLine data={d.cpu} xLabels={rangeTicks(range)} /></Card>
+        <Card title={`Yaddaş (${rangeLabel[range]})`}><AreaLine data={d.memory} color="#f59e0b" xLabels={rangeTicks(range)} /></Card>
       </div>
 
       <Card title="Qoşulu klientlər">

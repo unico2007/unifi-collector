@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
-	"time"
 )
 
 type talker struct {
@@ -27,9 +26,10 @@ func (s *Server) handleTraffic(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var d trafficDTO
 
-	// Throughput over 24h (bytes/s -> Mbps).
-	d.Rx = toMbps(mustSeries(s.prom.rangeSeries(ctx, `sum(rate(unifi_device_rx_bytes[5m]))`, 24*time.Hour, time.Hour)))
-	d.Tx = toMbps(mustSeries(s.prom.rangeSeries(ctx, `sum(rate(unifi_device_tx_bytes[5m]))`, 24*time.Hour, time.Hour)))
+	// Throughput over the selected range (bytes/s -> Mbps).
+	dur, step := parseRange(r.URL.Query().Get("range"))
+	d.Rx = toMbps(mustSeries(s.prom.rangeSeries(ctx, `sum(rate(unifi_device_rx_bytes[5m]))`, dur, step)))
+	d.Tx = toMbps(mustSeries(s.prom.rangeSeries(ctx, `sum(rate(unifi_device_tx_bytes[5m]))`, dur, step)))
 
 	// Cumulative totals.
 	rxTotal, _ := s.prom.scalar(ctx, `sum(unifi_device_rx_bytes)`)

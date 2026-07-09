@@ -52,6 +52,8 @@ export interface Overview {
   recentLogs: { time: string; level: "info" | "warn" | "error"; msg: string }[];
 }
 
+export type TimeRange = "1h" | "6h" | "24h" | "7d";
+
 async function get<T>(path: string, mock: T): Promise<T> {
   try {
     const r = await fetch(`/api${path}`, { credentials: "include" });
@@ -155,16 +157,17 @@ export interface AiInsights {
 }
 
 export const api = {
-  overview: () => get<Overview>("/overview", mockOverview),
+  overview: (range: TimeRange = "24h") => get<Overview>(`/overview?range=${range}`, mockOverview),
   devices: () => get<Device[]>("/devices", mockDevices),
   clients: () => get<Client[]>("/clients", mockClients),
   logCategories: () => get<LogCategory[]>("/logs/categories", mockCategories),
-  traffic: () => get<Traffic>("/traffic", mockTraffic),
+  traffic: (range: TimeRange = "24h") => get<Traffic>(`/traffic?range=${range}`, mockTraffic),
   wifi: () => get<Wifi>("/wifi", mockWifi),
   firewall: () => get<Firewall>("/firewall", mockFirewall),
   alerts: () => get<AlertsData>("/alerts", mockAlerts),
   topology: () => get<Topology>("/topology", mockTopology),
-  device: (name: string) => get<DeviceDetail>(`/devices/${encodeURIComponent(name)}`, mockDeviceDetail(name)),
+  device: (name: string, range: TimeRange = "24h") =>
+    get<DeviceDetail>(`/devices/${encodeURIComponent(name)}?range=${range}`, mockDeviceDetail(name)),
   aiChat: async (question: string): Promise<AiChat> => {
     try {
       const r = await fetch("/api/ai/chat", {
