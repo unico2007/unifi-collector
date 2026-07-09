@@ -48,8 +48,8 @@ export default function LogsPage() {
   }, [cur]);
 
   return (
-    <div className="flex gap-4 h-full">
-      <div className="w-52 shrink-0 card p-2 overflow-auto">
+    <div className="flex flex-col md:flex-row gap-4 md:h-full">
+      <div className="w-full md:w-52 shrink-0 card p-2 overflow-auto max-h-56 md:max-h-none">
         {(["unifi", "kerio"] as const).map((v) => (
           <div key={v} className="mb-2">
             <div className="px-2 py-1 text-[11px] uppercase tracking-wide text-muted">{v === "unifi" ? "UniFi" : "Kerio"}</div>
