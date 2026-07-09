@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { useRefresh } from "../lib/refresh";
@@ -63,6 +63,8 @@ function Icon({ name, className = "w-5 h-5" }: { name: string; className?: strin
     bell: "M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0",
     share: "M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM8.6 13.5l6.8 3.9M15.4 6.6l-6.8 3.9",
     file: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8",
+    moon: "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z",
+    sun: "M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z",
   };
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -81,9 +83,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     ? lastUpdated.toLocaleTimeString("az", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
     : "—";
 
+  const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"));
+  function toggleTheme() {
+    const next = !dark;
+    document.documentElement.classList.toggle("dark", next);
+    localStorage.setItem("unico_theme", next ? "dark" : "light");
+    setDark(next);
+  }
+
   return (
     <div className="flex h-full">
-      <aside className="w-60 shrink-0 bg-white border-r border-line flex flex-col">
+      <aside className="w-60 shrink-0 bg-card border-r border-line flex flex-col">
         <div className="h-14 flex items-center gap-2 px-4 border-b border-line">
           <span className="w-7 h-7 rounded-lg bg-brand-500 text-white grid place-items-center font-semibold">U</span>
           <span className="font-semibold">unico</span>
@@ -121,7 +131,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-14 shrink-0 bg-white border-b border-line flex items-center gap-3 px-5">
+        <header className="h-14 shrink-0 bg-card border-b border-line flex items-center gap-3 px-5">
           <h1 className="text-lg font-semibold">{title}</h1>
           <div className="ml-auto flex items-center gap-3">
             <GlobalSearch />
@@ -129,6 +139,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
               <span>Son yeniləmə {updatedAt}</span>
             </div>
+            <button className="btn" aria-label="Tema" title={dark ? "İşıqlı rejim" : "Qaranlıq rejim"} onClick={toggleTheme}>
+              <Icon name={dark ? "sun" : "moon"} className="w-4 h-4" />
+            </button>
             <button className="btn" aria-label="Yenilə" title="Yenilə" onClick={refresh} disabled={refreshing}>
               <Icon name="refresh" className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
             </button>

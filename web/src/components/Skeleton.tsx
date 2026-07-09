@@ -2,7 +2,7 @@
 // "Yüklənir..." text so each page shows its shape while data loads.
 
 export function Skeleton({ className = "" }: { className?: string }) {
-  return <div className={`animate-pulse rounded bg-slate-200/70 ${className}`} />;
+  return <div className={`animate-pulse rounded bg-slate-200/70 dark:bg-slate-700/50 ${className}`} />;
 }
 
 function StatCardSkeleton() {

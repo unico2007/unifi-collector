@@ -4,6 +4,20 @@
 
 :root {
   color-scheme: light;
+  --page: 245 247 250;
+  --ink: 15 23 42;
+  --muted: 100 116 139;
+  --line: 233 237 243;
+  --card: 255 255 255;
+}
+
+.dark {
+  color-scheme: dark;
+  --page: 15 23 42;
+  --ink: 226 232 240;
+  --muted: 148 163 184;
+  --line: 42 51 66;
+  --card: 26 33 50;
 }
 
 html,
@@ -14,24 +28,24 @@ body,
 
 body {
   margin: 0;
-  background: theme("colors.page");
-  color: theme("colors.ink");
+  background: rgb(var(--page));
+  color: rgb(var(--ink));
   font-family: theme("fontFamily.sans");
   -webkit-font-smoothing: antialiased;
 }
 
 @layer components {
   .card {
-    @apply bg-white border border-line rounded-xl shadow-sm;
+    @apply bg-card border border-line rounded-xl shadow-sm;
   }
   .pill {
     @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
   }
   .input {
-    @apply h-9 px-3 rounded-lg border border-line bg-white text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100;
+    @apply h-9 px-3 rounded-lg border border-line bg-card text-ink text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100;
   }
   .btn {
-    @apply h-9 px-3 rounded-lg border border-line bg-white text-sm text-ink hover:bg-page transition-colors inline-flex items-center gap-2;
+    @apply h-9 px-3 rounded-lg border border-line bg-card text-sm text-ink hover:bg-page transition-colors inline-flex items-center gap-2;
   }
   .btn-primary {
     @apply bg-brand-500 border-brand-500 text-white hover:bg-brand-600;

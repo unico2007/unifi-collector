@@ -1,6 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
+  darkMode: "class",
   theme: {
     extend: {
       colors: {
@@ -13,10 +14,13 @@ export default {
           600: "#1157bb",
           700: "#0e4796",
         },
-        ink: "#0f172a",
-        muted: "#64748b",
-        line: "#e9edf3",
-        page: "#f5f7fa",
+        // Semantic tokens driven by CSS variables so they flip in dark mode
+        // (see :root / .dark in index.css). Channels are space-separated RGB.
+        ink: "rgb(var(--ink) / <alpha-value>)",
+        muted: "rgb(var(--muted) / <alpha-value>)",
+        line: "rgb(var(--line) / <alpha-value>)",
+        page: "rgb(var(--page) / <alpha-value>)",
+        card: "rgb(var(--card) / <alpha-value>)",
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],

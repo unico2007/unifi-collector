@@ -88,7 +88,7 @@ export default function LogsPage() {
 
         <div className="card flex-1 overflow-auto">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-white">
+            <thead className="sticky top-0 bg-card">
               <tr className="text-left text-muted">
                 {cur?.columns.map((c) => (
                   <th key={c} className="font-medium px-3 py-2 border-b border-line whitespace-nowrap">{c}</th>
@@ -113,7 +113,7 @@ export default function LogsPage() {
 
 function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
-    <div className="rounded-xl bg-white border border-line px-4 py-3">
+    <div className="rounded-xl bg-card border border-line px-4 py-3">
       <div className={`text-xl font-semibold ${tone ?? ""}`}>{value}</div>
       <div className="text-xs text-muted">{label}</div>
     </div>

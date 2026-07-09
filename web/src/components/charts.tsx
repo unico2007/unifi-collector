@@ -197,7 +197,7 @@ function TimeSeries({
         {/* gridlines */}
         {showAxis &&
           ticks.map((t, i) => (
-            <line key={i} x1={padX} x2={w - padX} y1={ny(t)} y2={ny(t)} stroke="#eef2f7" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+            <line key={i} x1={padX} x2={w - padX} y1={ny(t)} y2={ny(t)} className="stroke-line" strokeWidth="1" vectorEffect="non-scaling-stroke" />
           ))}
 
         {/* areas + lines */}
@@ -224,7 +224,7 @@ function TimeSeries({
 
         {/* hover crosshair (vertical line; round dots are HTML overlays below) */}
         {hover != null && (
-          <line x1={nx(hover)} x2={nx(hover)} y1={padTop} y2={height - padBottom} stroke="#cbd5e1" strokeWidth="1" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
+          <line x1={nx(hover)} x2={nx(hover)} y1={padTop} y2={height - padBottom} className="stroke-slate-300 dark:stroke-slate-600" strokeWidth="1" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
         )}
       </svg>
 
@@ -261,7 +261,7 @@ function TimeSeries({
       {/* tooltip */}
       {hover != null && (
         <div
-          className="pointer-events-none absolute z-10 -translate-x-1/2 rounded-lg bg-ink/90 px-2.5 py-1.5 text-xs text-white shadow-lg backdrop-blur"
+          className="pointer-events-none absolute z-10 -translate-x-1/2 rounded-lg bg-slate-900/90 px-2.5 py-1.5 text-xs text-white shadow-lg backdrop-blur"
           style={{ left: `${Math.max(12, Math.min(88, hoverPct))}%`, top: 0 }}
         >
           {series.map((s, i) => (
@@ -362,7 +362,7 @@ export function Donut({
             <stop offset="100%" stopColor={color} stopOpacity="0.65" />
           </linearGradient>
         </defs>
-        <circle cx="50" cy="50" r={r} fill="none" stroke="#eef2f7" strokeWidth="11" />
+        <circle cx="50" cy="50" r={r} fill="none" className="stroke-line" strokeWidth="11" />
         <circle
           cx="50"
           cy="50"
@@ -404,7 +404,7 @@ export function Gauge({ value, label, tone }: { value: number; label: string; to
             <stop offset="100%" stopColor={color} stopOpacity="0.6" />
           </linearGradient>
         </defs>
-        <circle cx="50" cy="50" r={r} fill="none" stroke="#eef2f7" strokeWidth="10" />
+        <circle cx="50" cy="50" r={r} fill="none" className="stroke-line" strokeWidth="10" />
         <circle
           cx="50"
           cy="50"
