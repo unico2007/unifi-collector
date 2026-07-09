@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import httpx
 from .config import settings
@@ -76,7 +78,22 @@ class Ollama:
         except json.JSONDecodeError:
             return {}
 
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        """Batch-embed texts via Ollama /api/embed (used for RAG). Returns one
+        vector per input. Raises on transport/HTTP errors so callers can degrade."""
+        if not texts:
+            return []
+        async with httpx.AsyncClient(timeout=settings.llm_timeout) as c:
+            r = await c.post(
+                f"{self.url}/api/embed",
+                json={"model": self.model, "input": texts},
+            )
+            r.raise_for_status()
+            return r.json().get("embeddings", [])
+
 
 prom = Prometheus(settings.prometheus_url)
 loki = Loki(settings.loki_url)
 llm = Ollama(settings.ollama_url, settings.ollama_model)
+# Separate handle for embeddings (same Ollama, dedicated small model).
+embedder = Ollama(settings.ollama_url, settings.embed_model)

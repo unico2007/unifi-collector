@@ -103,9 +103,10 @@ export interface DeviceDetail {
 
 export interface AiChat {
   answer: string;
-  source: "prometheus" | "loki" | "";
+  source: "prometheus" | "loki" | "knowledge" | "";
   query: string;
   result?: string;
+  sources?: string[];
 }
 
 export interface Alert {

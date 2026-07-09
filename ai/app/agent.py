@@ -6,7 +6,11 @@ reasoning, forecasting and anomaly tools are added in later phases behind the
 same interface.
 """
 
+from __future__ import annotations
+
 from .clients import prom, loki, llm
+from .config import settings
+from .rag import kb
 
 # Hand-written schema of the collector's neutral metrics — this grounds the LLM
 # far better than raw metric names. Extend it as new vendors/metrics arrive.
@@ -28,15 +32,21 @@ Loki logs: labels {vendor,site,level,event}. Example stream selector {vendor="un
 Log levels: info, warn, error. Query with LogQL, e.g. {vendor="unifi"} |= "error".
 """.strip()
 
-PLANNER_SYSTEM = f"""You are a monitoring query planner for a UniFi + Kerio network.
-Given a user question, output ONE query to answer it.
+PLANNER_SYSTEM = f"""You are a monitoring query planner+router for a UniFi + Kerio network.
+Given a user question, decide how to answer it.
 {SCHEMA}
 
+Pick ONE source:
+- "prometheus" — for live numbers/metrics/status (counts, CPU, memory, rssi, traffic).
+- "loki" — for actual log text/events right now.
+- "knowledge" — for how-to / why / "what does X mean" / troubleshooting steps /
+  network layout / procedures / documentation. No live number is needed; the answer
+  comes from the knowledge base. For "knowledge", put good search keywords in "query".
+
 Rules:
-- Choose source "prometheus" for numbers/metrics/status, "loki" for log text/events.
 - For rates/traffic use rate(metric[5m]).
 - Keep any time range <= {'{'}max{'}'}.
-- Output STRICT JSON: {{"source":"prometheus"|"loki","query":"...","reason":"..."}}
+- Output STRICT JSON: {{"source":"prometheus"|"loki"|"knowledge","query":"...","reason":"..."}}
 - Do NOT invent metric or label names outside the schema.
 """.replace("{max}", "24h")
 
@@ -44,6 +54,11 @@ ANSWER_SYSTEM = """You are a helpful network monitoring assistant.
 Answer the user's question in AZERBAIJANI, concisely and concretely, using ONLY
 the query result provided. If the result is empty, say so plainly and suggest
 what to check. Do not fabricate numbers."""
+
+KNOWLEDGE_SYSTEM = """Sən Unico şəbəkə monitorinq köməkçisisən. İstifadəçiyə
+AZƏRBAYCANCA, qısa və konkret cavab ver. YALNIZ aşağıdakı "Bilik" mətninə əsaslan;
+orada olmayanı uydurma. Uyğun məlumat yoxdursa, açıq de və nəyi yoxlamağı təklif et.
+Addımlar varsa nömrələ. İstinad etdiyin mənbəni sonda göstər (məs. mənbə: runbooks.md)."""
 
 
 def _validate(source: str, query: str) -> str | None:
@@ -81,11 +96,35 @@ def _summarize(source: str, data: dict, limit: int = 40) -> str:
         return f"(nəticəni oxumaq mümkün olmadı: {e})"
 
 
+async def _answer_knowledge(question: str, refined: str) -> dict:
+    """Phase-3 RAG branch: retrieve relevant knowledge chunks and answer from them."""
+    hits = [h for h in await kb.search(refined or question) if h.score >= settings.rag_min_score]
+    if not hits:
+        note = f" ({kb.error})" if kb.error else ""
+        return {
+            "answer": "Bu barədə bilik bazasında uyğun məlumat tapmadım" + note
+            + ". Sualı bir az dəqiqləşdirin, ya da metrik/log şəklində soruşun "
+            "(məs. 'neçə cihaz offline?').",
+            "source": "knowledge", "query": refined or question, "result": "",
+        }
+    context = "\n\n".join(f"[{h.chunk.source} › {h.chunk.section}]\n{h.chunk.text}" for h in hits)
+    answer = await llm.generate(f"Sual: {question}\n\nBilik:\n{context}", system=KNOWLEDGE_SYSTEM)
+    sources = sorted({h.chunk.source for h in hits})
+    return {
+        "answer": answer.strip(), "source": "knowledge",
+        "query": refined or question, "result": context, "sources": sources,
+    }
+
+
 async def chat(question: str) -> dict:
-    # 1) plan the query
+    # 1) plan / route the question
     plan = await llm.generate_json(f"Sual: {question}", system=PLANNER_SYSTEM)
     source = plan.get("source", "")
     query = plan.get("query", "")
+
+    # RAG branch: knowledge-base answer (how/why/troubleshooting/docs).
+    if source == "knowledge":
+        return await _answer_knowledge(question, query)
 
     err = _validate(source, query)
     if err:

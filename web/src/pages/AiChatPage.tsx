@@ -11,13 +11,14 @@ interface Msg {
 const suggestions = [
   "Neçə cihaz var?",
   "Hansı cihazlar offline-dır?",
-  "Son 24 saatda ən çox bloklanan IP hansıdır?",
+  "AP offline olsa nə yoxlamalıyam?",
   "CPU-su ən yüksək cihaz hansıdır?",
 ];
 
 const sourceLabel: Record<string, string> = {
   prometheus: "Prometheus (metrik)",
   loki: "Loki (log)",
+  knowledge: "Bilik bazası (RAG)",
 };
 
 export default function AiChatPage() {

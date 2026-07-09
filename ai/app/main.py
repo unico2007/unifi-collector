@@ -3,9 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .config import settings
-from .clients import prom, loki, llm
+from .clients import prom, loki, llm, embedder
 from . import agent
 from . import insights
+from .rag import kb
 
 app = FastAPI(title="Unico AI service", version="0.1.0")
 app.add_middleware(
@@ -19,7 +20,11 @@ class ChatIn(BaseModel):
 
 @app.get("/ai/health")
 async def health():
-    out = {"model": settings.ollama_model, "ollama": False, "prometheus": False, "loki": False}
+    out = {
+        "model": settings.ollama_model,
+        "embed_model": settings.embed_model,
+        "ollama": False, "prometheus": False, "loki": False, "embed": False,
+    }
     try:
         await llm.generate("ping", system="Reply with: ok")
         out["ollama"] = True
@@ -35,7 +40,22 @@ async def health():
         out["loki"] = True
     except Exception:  # noqa: BLE001
         pass
+    try:
+        v = await embedder.embed(["ping"])
+        out["embed"] = bool(v and v[0])
+    except Exception:  # noqa: BLE001
+        pass
     return out
+
+
+@app.get("/ai/knowledge")
+async def knowledge_status():
+    """RAG index status: whether the knowledge base built and how many chunks."""
+    await kb.ensure_ready()
+    sources: dict[str, int] = {}
+    for ch in kb.chunks:
+        sources[ch.source] = sources.get(ch.source, 0) + 1
+    return {"ready": kb.ready, "chunks": len(kb.chunks), "sources": sources, "error": kb.error}
 
 
 @app.post("/ai/chat")
