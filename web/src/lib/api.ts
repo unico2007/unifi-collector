@@ -135,6 +135,7 @@ export interface AlertsData {
   counts: { critical: number; warning: number };
   rules: { name: string; condition: string; level: string }[];
   thresholds: AlertThresholds;
+  telegramEnabled: boolean;
 }
 
 export interface TopoNode {
@@ -181,6 +182,11 @@ export const api = {
   firewall: () => get<Firewall>("/firewall", mockFirewall),
   alerts: () => get<AlertsData>("/alerts", mockAlerts),
   alertHistory: () => get<AlertHistoryRow[]>("/alerts/history", mockAlertHistory),
+  testNotify: async (): Promise<{ enabled: boolean; sent?: boolean; error?: string }> => {
+    const r = await fetch("/api/alerts/test-notify", { method: "POST", credentials: "include" });
+    if (!r.ok && r.status !== 502) throw new Error(String(r.status));
+    return (await r.json()) as { enabled: boolean; sent?: boolean; error?: string };
+  },
   updateAlertThresholds: async (t: AlertThresholds): Promise<AlertThresholds> => {
     const r = await fetch("/api/alerts/settings", {
       method: "PUT",
@@ -465,6 +471,7 @@ const mockAlerts: AlertsData = {
     { name: "Subsystem problemi", condition: "unifi_health_status < 1", level: "warning" },
   ],
   thresholds: { cpuPercent: 85, memoryPercent: 90 },
+  telegramEnabled: false,
 };
 
 const now = Math.floor(Date.now() / 1000);

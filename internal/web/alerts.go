@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"time"
 )
 
 type alertDTO struct {
@@ -29,8 +30,9 @@ type alertsDTO struct {
 		Critical int `json:"critical"`
 		Warning  int `json:"warning"`
 	} `json:"counts"`
-	Rules      []ruleDTO  `json:"rules"`
-	Thresholds thresholds `json:"thresholds"`
+	Rules           []ruleDTO  `json:"rules"`
+	Thresholds      thresholds `json:"thresholds"`
+	TelegramEnabled bool       `json:"telegramEnabled"`
 }
 
 // rulesFor builds the rule list for the given thresholds. Rules are evaluated
@@ -53,6 +55,7 @@ func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
 	out.Active = s.activeAlerts(ctx, th)
 	out.Rules = rulesFor(th)
 	out.Thresholds = th
+	out.TelegramEnabled = s.notifier.enabled()
 
 	for _, a := range out.Active {
 		switch a.Level {
@@ -90,6 +93,22 @@ func (s *Server) handleAlertSettingsUpdate(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeJSON(w, http.StatusOK, s.astore.thresholds())
+}
+
+// handleTestNotify sends a test Telegram message so an admin can verify the
+// bot token + chat id are correct (admin-only; gated by the route wrapper).
+func (s *Server) handleTestNotify(w http.ResponseWriter, r *http.Request) {
+	if !s.notifier.enabled() {
+		writeJSON(w, http.StatusOK, map[string]any{"enabled": false})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	if err := s.notifier.send(ctx, "✅ Unico test bildirişi — Telegram inteqrasiyası işləyir."); err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]any{"enabled": true, "error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"enabled": true, "sent": true})
 }
 
 // activeAlerts evaluates every rule live against Prometheus and returns the

@@ -125,10 +125,53 @@ export default function AlertsPage() {
         </div>
       </div>
 
+      <NotifyStatus enabled={d.telegramEnabled} isAdmin={user?.role === "admin"} />
+
       <p className="text-xs text-muted">
         Qaydalar hər açılışda Prometheus-dan canlı qiymətləndirilir; tarixçə fonda hər 30 saniyədə yazılır.
         {user?.role === "admin" ? " CPU/yaddaş həddlərini yuxarıdan dəyişə bilərsiniz." : " Həddləri yalnız admin dəyişə bilər."}
       </p>
+    </div>
+  );
+}
+
+function NotifyStatus({ enabled, isAdmin }: { enabled: boolean; isAdmin: boolean }) {
+  const [state, setState] = useState<"idle" | "sending" | "sent" | "fail">("idle");
+
+  async function test() {
+    setState("sending");
+    try {
+      const r = await api.testNotify();
+      setState(r.sent ? "sent" : "fail");
+    } catch {
+      setState("fail");
+    }
+    setTimeout(() => setState("idle"), 4000);
+  }
+
+  return (
+    <div className="card p-4 flex flex-wrap items-center gap-3">
+      <span className="w-8 h-8 shrink-0 rounded-lg bg-brand-50 text-brand-600 grid place-items-center ring-1 ring-brand-100">
+        <Ico d="M22 2 11 13M22 2l-7 20-4-9-9-4z" />
+      </span>
+      <div className="min-w-0">
+        <div className="text-sm font-medium">Telegram bildirişləri</div>
+        <div className="text-xs text-muted">
+          {enabled
+            ? "Aktiv — yeni alertlər avtomatik Telegram-a göndərilir"
+            : "Deaktiv — serverin .env-inə WEB_TELEGRAM_TOKEN + WEB_TELEGRAM_CHAT_ID əlavə edin"}
+        </div>
+      </div>
+      <span className={`ml-auto pill ${enabled ? "bg-green-50 text-green-700" : "bg-slate-100 text-slate-600"}`}>
+        {enabled ? "aktiv" : "deaktiv"}
+      </span>
+      {isAdmin && enabled && (
+        <button className="btn" onClick={test} disabled={state === "sending"}>
+          {state === "sending" ? "Göndərilir..." : "Test bildirişi"}
+        </button>
+      )}
+      {state === "sent" && <span className="text-xs text-green-600">✓ Göndərildi</span>}
+      {state === "fail" && <span className="text-xs text-red-600">Göndərilmədi</span>}
     </div>
   );
 }

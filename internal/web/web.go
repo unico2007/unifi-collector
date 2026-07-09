@@ -17,26 +17,29 @@ import (
 
 // Config configures the BFF server.
 type Config struct {
-	Addr          string // listen address, e.g. ":8080"
-	StaticDir     string // path to the built frontend (web/dist)
-	PrometheusURL string // e.g. http://prometheus:9090
-	LokiURL       string // e.g. http://loki:3100
-	AIURL         string // e.g. http://ai:8090
-	ReadTimeout   time.Duration
-	WriteTimeout  time.Duration
+	Addr           string // listen address, e.g. ":8080"
+	StaticDir      string // path to the built frontend (web/dist)
+	PrometheusURL  string // e.g. http://prometheus:9090
+	LokiURL        string // e.g. http://loki:3100
+	AIURL          string // e.g. http://ai:8090
+	TelegramToken  string // optional: Telegram bot token for alert notifications
+	TelegramChatID string // optional: Telegram chat id to notify
+	ReadTimeout    time.Duration
+	WriteTimeout   time.Duration
 }
 
 // Server is the BFF. It owns the user store, sessions, and upstream clients.
 type Server struct {
-	cfg     Config
-	log     *zap.Logger
-	http    *http.Server
-	users   *userStore
-	astore  *alertStore
-	signer  *signer
-	prom    *promClient
-	loki    *lokiClient
-	aiProxy *httputil.ReverseProxy
+	cfg      Config
+	log      *zap.Logger
+	http     *http.Server
+	users    *userStore
+	astore   *alertStore
+	signer   *signer
+	prom     *promClient
+	loki     *lokiClient
+	notifier *notifier
+	aiProxy  *httputil.ReverseProxy
 }
 
 // New wires the server. The caller owns the userStore lifecycle via Close.
@@ -46,13 +49,14 @@ func New(cfg Config, users *userStore, log *zap.Logger) (*Server, error) {
 		return nil, err
 	}
 	s := &Server{
-		cfg:    cfg,
-		log:    log,
-		users:  users,
-		astore: astore,
-		signer: newSigner(users.secret),
-		prom:   newPromClient(cfg.PrometheusURL),
-		loki:   newLokiClient(cfg.LokiURL),
+		cfg:      cfg,
+		log:      log,
+		users:    users,
+		astore:   astore,
+		signer:   newSigner(users.secret),
+		prom:     newPromClient(cfg.PrometheusURL),
+		loki:     newLokiClient(cfg.LokiURL),
+		notifier: newNotifier(cfg.TelegramToken, cfg.TelegramChatID),
 	}
 
 	if cfg.AIURL != "" {
@@ -82,6 +86,7 @@ func New(cfg Config, users *userStore, log *zap.Logger) (*Server, error) {
 	mux.HandleFunc("GET /api/alerts/history", s.requireAuth(s.handleAlertHistory))
 	mux.HandleFunc("GET /api/alerts/settings", s.requireAuth(s.handleAlertSettings))
 	mux.HandleFunc("PUT /api/alerts/settings", s.requireAdmin(s.handleAlertSettingsUpdate))
+	mux.HandleFunc("POST /api/alerts/test-notify", s.requireAdmin(s.handleTestNotify))
 	mux.HandleFunc("GET /api/topology", s.requireAuth(s.handleTopology))
 	mux.HandleFunc("GET /api/logs/categories", s.requireAuth(s.handleLogsCategories))
 
@@ -135,6 +140,7 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 // events even when nobody is viewing the Alerts page. Runs until ctx is done.
 func (s *Server) runAlertEvaluator(ctx context.Context) {
 	const interval = 30 * time.Second
+	first := true
 	evaluate := func() {
 		ectx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
@@ -145,9 +151,19 @@ func (s *Server) runAlertEvaluator(ctx context.Context) {
 			return
 		}
 		active := s.activeAlerts(ectx, s.astore.thresholds())
-		if err := s.astore.recordTransitions(active); err != nil {
+		fired, resolved, err := s.astore.recordTransitions(active)
+		if err != nil {
 			s.log.Warn("alert history record failed", zap.Error(err))
+			return
 		}
+		// Skip notifications on the very first tick: on a fresh DB every current
+		// alert would look "newly fired" and spam the chat. After that, restarts
+		// don't re-fire (open rows persist in SQLite), so this only mutes genuine
+		// pre-existing state at first boot.
+		if !first {
+			s.notifier.notifyTransitions(ectx, fired, resolved)
+		}
+		first = false
 	}
 	evaluate() // once at startup so history starts immediately
 	ticker := time.NewTicker(interval)

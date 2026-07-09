@@ -104,24 +104,30 @@ func (s *alertStore) setThresholds(th thresholds) error {
 // recordTransitions diffs the current active alerts against the open (unresolved)
 // history rows: newly-seen fingerprints are inserted as fired, and open rows no
 // longer active are marked resolved. Called on a timer so the timeline reflects
-// real fire/resolve events even when nobody is viewing the page.
-func (s *alertStore) recordTransitions(active []alertDTO) error {
+// real fire/resolve events even when nobody is viewing the page. It returns the
+// alerts that fired and resolved on this tick so the caller can notify.
+func (s *alertStore) recordTransitions(active []alertDTO) (fired, resolved []alertDTO, err error) {
 	now := time.Now().Unix()
 	current := make(map[string]alertDTO, len(active))
 	for _, a := range active {
 		current[a.Rule+"|"+a.Target] = a
 	}
 
-	open := map[string]int64{} // fingerprint -> row id
-	rows, err := s.db.Query(`SELECT id, fingerprint FROM alert_history WHERE resolved_at IS NULL`)
+	type openRow struct {
+		id     int64
+		detail alertDTO
+	}
+	open := map[string]openRow{} // fingerprint -> row
+	rows, err := s.db.Query(`SELECT id, fingerprint, level, rule, target, message FROM alert_history WHERE resolved_at IS NULL`)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	for rows.Next() {
 		var id int64
 		var fp string
-		if rows.Scan(&id, &fp) == nil {
-			open[fp] = id
+		var a alertDTO
+		if rows.Scan(&id, &fp, &a.Level, &a.Rule, &a.Target, &a.Message) == nil {
+			open[fp] = openRow{id: id, detail: a}
 		}
 	}
 	_ = rows.Close()
@@ -134,19 +140,21 @@ func (s *alertStore) recordTransitions(active []alertDTO) error {
 		if _, err := s.db.Exec(
 			`INSERT INTO alert_history (fingerprint, level, rule, target, message, fired_at) VALUES (?, ?, ?, ?, ?, ?)`,
 			fp, a.Level, a.Rule, a.Target, a.Message, now); err != nil {
-			return err
+			return nil, nil, err
 		}
+		fired = append(fired, a)
 	}
 	// Resolve: open but no longer active.
-	for fp, id := range open {
+	for fp, row := range open {
 		if _, ok := current[fp]; ok {
 			continue
 		}
-		if _, err := s.db.Exec(`UPDATE alert_history SET resolved_at = ? WHERE id = ?`, now, id); err != nil {
-			return err
+		if _, err := s.db.Exec(`UPDATE alert_history SET resolved_at = ? WHERE id = ?`, now, row.id); err != nil {
+			return nil, nil, err
 		}
+		resolved = append(resolved, row.detail)
 	}
-	return nil
+	return fired, resolved, nil
 }
 
 // history returns the most recent alert spans (active first via NULL resolved_at

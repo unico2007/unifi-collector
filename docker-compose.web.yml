@@ -19,6 +19,9 @@ services:
       WEB_LOKI_URL: "http://loki:3100"
       WEB_AI_URL: "http://ai:8090"
       WEB_DB: "/data/users.db"
+      # Optional Telegram alert notifications — set both in the server .env to enable.
+      WEB_TELEGRAM_TOKEN: "${WEB_TELEGRAM_TOKEN:-}"
+      WEB_TELEGRAM_CHAT_ID: "${WEB_TELEGRAM_CHAT_ID:-}"
     volumes:
       - web-data:/data
     depends_on:

@@ -38,6 +38,8 @@ func run() error {
 		lokiURL    = flag.String("loki", env("WEB_LOKI_URL", "http://loki:3100"), "Loki base URL")
 		aiURL      = flag.String("ai", env("WEB_AI_URL", "http://ai:8090"), "AI service base URL")
 		dbPath     = flag.String("db", env("WEB_DB", "data/users.db"), "SQLite user database path")
+		tgToken    = flag.String("telegram-token", env("WEB_TELEGRAM_TOKEN", ""), "Telegram bot token for alert notifications (optional)")
+		tgChat     = flag.String("telegram-chat", env("WEB_TELEGRAM_CHAT_ID", ""), "Telegram chat id to notify (optional)")
 		createUser = flag.Bool("create-user", false, "create/update a user, then exit")
 		username   = flag.String("user", "", "username (with -create-user)")
 		password   = flag.String("pass", "", "password (with -create-user)")
@@ -69,13 +71,15 @@ func run() error {
 	log.Info("unico bff starting", zap.String("version", version))
 
 	srv, err := web.New(web.Config{
-		Addr:          *addr,
-		StaticDir:     *staticDir,
-		PrometheusURL: *promURL,
-		LokiURL:       *lokiURL,
-		AIURL:         *aiURL,
-		ReadTimeout:   15 * time.Second,
-		WriteTimeout:  30 * time.Second,
+		Addr:           *addr,
+		StaticDir:      *staticDir,
+		PrometheusURL:  *promURL,
+		LokiURL:        *lokiURL,
+		AIURL:          *aiURL,
+		TelegramToken:  *tgToken,
+		TelegramChatID: *tgChat,
+		ReadTimeout:    15 * time.Second,
+		WriteTimeout:   30 * time.Second,
 	}, users, log)
 	if err != nil {
 		return err
