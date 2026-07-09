@@ -1,6 +1,6 @@
 import { api, Traffic } from "../lib/api";
 import { usePolling } from "../lib/refresh";
-import { Card, DualArea, StatCard, TopBars } from "../components/charts";
+import { Card, DualArea, lastHoursTicks, StatCard, TopBars } from "../components/charts";
 import { PageSkeleton } from "../components/Skeleton";
 
 const fmtMbps = (v: number) => `${v >= 10 ? Math.round(v) : Math.round(v * 10) / 10} Mbps`;
@@ -24,7 +24,7 @@ export default function TrafficPage() {
       </div>
 
       <Card title="Bant genişliyi (24 saat)" subtitle="Endirmə və yükləmə">
-        <DualArea a={t.rx} b={t.tx} />
+        <DualArea a={t.rx} b={t.tx} xLabels={lastHoursTicks(24)} />
       </Card>
 
       <div className="grid lg:grid-cols-2 gap-4">

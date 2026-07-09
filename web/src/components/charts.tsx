@@ -134,11 +134,13 @@ function TimeSeries({
   height = 150,
   unit = "",
   showAxis = true,
+  xLabels,
 }: {
   series: Series[];
   height?: number;
   unit?: string;
   showAxis?: boolean;
+  xLabels?: string[];
 }) {
   const uid = useId().replace(/:/g, "");
   const [hover, setHover] = useState<number | null>(null);
@@ -176,6 +178,7 @@ function TimeSeries({
   const hoverPct = hover != null ? (100 * nx(hover)) / w : 0;
 
   return (
+    <div>
     <div className="relative select-none" style={{ height }}>
       <svg
         viewBox={`0 0 ${w} ${height}`}
@@ -277,11 +280,31 @@ function TimeSeries({
         </div>
       )}
     </div>
+    {xLabels && xLabels.length > 0 && (
+      <div className="flex justify-between text-[10px] text-slate-400 tabular-nums mt-1 px-1">
+        {xLabels.map((t, i) => (
+          <span key={i}>{t}</span>
+        ))}
+      </div>
+    )}
+    </div>
   );
 }
 
-export function AreaLine({ data, color = BRAND, height = 150, unit = "" }: { data: number[]; color?: string; height?: number; unit?: string }) {
-  return <TimeSeries series={[{ data, color, label: "" }]} height={height} unit={unit} />;
+// lastHoursTicks builds `count` evenly-spaced clock-time labels for a series that
+// spans the last `hoursBack` hours ending now (oldest → newest).
+export function lastHoursTicks(hoursBack: number, count = 5): string[] {
+  const now = Date.now();
+  const out: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const t = new Date(now - (hoursBack - (hoursBack * i) / (count - 1)) * 3600000);
+    out.push(t.toLocaleTimeString("az", { hour: "2-digit", minute: "2-digit" }));
+  }
+  return out;
+}
+
+export function AreaLine({ data, color = BRAND, height = 150, unit = "", xLabels }: { data: number[]; color?: string; height?: number; unit?: string; xLabels?: string[] }) {
+  return <TimeSeries series={[{ data, color, label: "" }]} height={height} unit={unit} xLabels={xLabels} />;
 }
 
 export function DualArea({
@@ -293,6 +316,7 @@ export function DualArea({
   colorA = BRAND,
   colorB = GREEN,
   unit = "",
+  xLabels,
 }: {
   a: number[];
   b: number[];
@@ -302,6 +326,7 @@ export function DualArea({
   colorA?: string;
   colorB?: string;
   unit?: string;
+  xLabels?: string[];
 }) {
   return (
     <div>
@@ -312,6 +337,7 @@ export function DualArea({
         ]}
         height={height}
         unit={unit}
+        xLabels={xLabels}
       />
       <div className="flex gap-4 text-xs text-muted mt-2">
         <Legend color={colorA} label={labelA} />

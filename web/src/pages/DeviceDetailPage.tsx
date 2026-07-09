@@ -1,7 +1,7 @@
 import { Link, useParams } from "react-router-dom";
 import { api, DeviceDetail } from "../lib/api";
 import { usePolling } from "../lib/refresh";
-import { Card, AreaLine, Gauge } from "../components/charts";
+import { Card, AreaLine, Gauge, lastHoursTicks } from "../components/charts";
 import { PageSkeleton } from "../components/Skeleton";
 
 const fmtMbps = (v: number) => (v >= 10 ? Math.round(v) : Math.round(v * 10) / 10);
@@ -49,8 +49,8 @@ export default function DeviceDetailPage() {
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4">
-        <Card title="CPU (24 saat)"><AreaLine data={d.cpu} /></Card>
-        <Card title="Yaddaş (24 saat)"><AreaLine data={d.memory} color="#f59e0b" /></Card>
+        <Card title="CPU (24 saat)"><AreaLine data={d.cpu} xLabels={lastHoursTicks(24)} /></Card>
+        <Card title="Yaddaş (24 saat)"><AreaLine data={d.memory} color="#f59e0b" xLabels={lastHoursTicks(24)} /></Card>
       </div>
 
       <Card title="Qoşulu klientlər">

@@ -1,6 +1,6 @@
 import { api, Overview, AiInsights, AiInsight } from "../lib/api";
 import { usePolling } from "../lib/refresh";
-import { AreaLine, Donut, StatCard } from "../components/charts";
+import { AreaLine, Donut, lastHoursTicks, StatCard } from "../components/charts";
 import { PageSkeleton } from "../components/Skeleton";
 
 function SvgIcon({ d }: { d: string }) {
@@ -76,7 +76,7 @@ export default function OverviewPage() {
       <div className="grid lg:grid-cols-3 gap-4">
         <div className="card p-4 lg:col-span-2">
           <div className="text-sm font-semibold mb-3">Klient sayı (24 saat)</div>
-          <AreaLine data={d.clientSeries} height={160} />
+          <AreaLine data={d.clientSeries} height={160} xLabels={lastHoursTicks(24)} />
         </div>
         <div className="card p-4 flex flex-col">
           <div className="text-sm font-semibold mb-2">Cihaz statusu</div>

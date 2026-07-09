@@ -1,6 +1,6 @@
 import { api, Firewall } from "../lib/api";
 import { usePolling } from "../lib/refresh";
-import { Card, DualArea, StatCard, TopBars } from "../components/charts";
+import { Card, DualArea, lastHoursTicks, StatCard, TopBars } from "../components/charts";
 import { PageSkeleton } from "../components/Skeleton";
 
 export default function FirewallPage() {
@@ -17,7 +17,7 @@ export default function FirewallPage() {
       </div>
 
       <Card title="İcazə / Blok (24 saat)" subtitle="Firewall qərarları">
-        <DualArea a={f.allow} b={f.deny} labelA="İcazə" labelB="Blok" colorA="#16a34a" colorB="#ef4444" />
+        <DualArea a={f.allow} b={f.deny} labelA="İcazə" labelB="Blok" colorA="#16a34a" colorB="#ef4444" xLabels={lastHoursTicks(24)} />
       </Card>
 
       <div className="grid lg:grid-cols-3 gap-4">
