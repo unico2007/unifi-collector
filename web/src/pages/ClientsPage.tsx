@@ -1,6 +1,19 @@
 import { useMemo, useState } from "react";
 import { api, Client } from "../lib/api";
 import { usePolling } from "../lib/refresh";
+import { Accessor, rateToNum, SortTh, useSort } from "../components/sortable";
+
+const clientCols = ["Ad / MAC", "AP", "VLAN", "Siqnal", "Endirmə", "Yükləmə", "IP", "Qoşulma vaxtı"];
+const clientAccessors: Accessor<Client>[] = [
+  (c) => c.name || c.mac,
+  (c) => c.ap,
+  (c) => c.vlan,
+  (c) => c.rssi,
+  (c) => rateToNum(c.rx),
+  (c) => rateToNum(c.tx),
+  (c) => c.ip,
+  (c) => c.since,
+];
 
 function Signal({ rssi }: { rssi: number }) {
   // -50 great, -70 ok, -80 poor
@@ -27,6 +40,7 @@ export default function ClientsPage() {
     () => clients.filter((c) => q === "" || c.name.toLowerCase().includes(q.toLowerCase()) || c.mac.includes(q)),
     [clients, q],
   );
+  const { sorted, sort } = useSort(rows, clientAccessors);
 
   return (
     <div>
@@ -39,13 +53,13 @@ export default function ClientsPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-muted">
-              {["Ad / MAC", "AP", "VLAN", "Siqnal", "Endirmə", "Yükləmə", "IP", "Qoşulma vaxtı"].map((h) => (
-                <th key={h} className="font-medium px-3 py-2 border-b border-line whitespace-nowrap">{h}</th>
+              {clientCols.map((h, i) => (
+                <SortTh key={h} label={h} i={i} sort={sort} />
               ))}
             </tr>
           </thead>
           <tbody>
-            {rows.map((c) => (
+            {sorted.map((c) => (
               <tr key={c.mac} className="odd:bg-page/60 hover:bg-page">
                 <td className="px-3 py-2 border-b border-line">
                   <div className="font-medium">{c.name}</div>

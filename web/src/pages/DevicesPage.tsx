@@ -3,6 +3,20 @@ import { Link } from "react-router-dom";
 import { api, Device } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { usePolling, useRefresh } from "../lib/refresh";
+import { Accessor, SortTh, useSort } from "../components/sortable";
+
+const deviceCols = ["Ad", "Vendor", "Tip", "IP", "MAC", "Status", "CPU", "Yaddaş", "Uptime"];
+const deviceAccessors: Accessor<Device>[] = [
+  (d) => d.name,
+  (d) => d.vendor,
+  (d) => d.type,
+  (d) => d.ip,
+  (d) => d.mac,
+  (d) => d.state,
+  (d) => d.cpu,
+  (d) => d.memory,
+  (d) => d.uptime,
+];
 
 function VendorBadge({ v }: { v: string }) {
   const cls = v === "unifi" ? "bg-brand-50 text-brand-700" : "bg-orange-50 text-orange-700";
@@ -40,6 +54,7 @@ export default function DevicesPage() {
       ),
     [devices, vendor, status, q],
   );
+  const { sorted, sort } = useSort(rows, deviceAccessors);
 
   return (
     <div>
@@ -66,13 +81,13 @@ export default function DevicesPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-muted">
-              {["Ad", "Vendor", "Tip", "IP", "MAC", "Status", "CPU", "Yaddaş", "Uptime"].map((h) => (
-                <th key={h} className="font-medium px-3 py-2 border-b border-line whitespace-nowrap">{h}</th>
+              {deviceCols.map((h, i) => (
+                <SortTh key={h} label={h} i={i} sort={sort} />
               ))}
             </tr>
           </thead>
           <tbody>
-            {rows.map((d) => (
+            {sorted.map((d) => (
               <tr key={d.name} className="odd:bg-page/60 hover:bg-page">
                 <td className="px-3 py-2 border-b border-line font-medium">
                   <Link to={`/devices/${encodeURIComponent(d.name)}`} className="text-brand-600 hover:underline">{d.name}</Link>
