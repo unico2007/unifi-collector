@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
@@ -21,12 +22,22 @@ type logCategoryDTO struct {
 	Rows    [][]any  `json:"rows"`
 }
 
-// handleLogsCategories reads recent UniFi logs from Loki, parses their CEF
-// payload, and groups them by CEF event name into categories the Logs page can
-// render. Kerio categories are absent because Kerio does not ship logs to Loki
-// yet (see the gap report).
+// handleLogsCategories returns the Logs page categories: UniFi CEF events grouped
+// by event name, followed by Kerio firewall events grouped by rule. The frontend
+// splits them into UniFi/Kerio sidebar sections by the vendor field.
 func (s *Server) handleLogsCategories(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	out := s.unifiCategories(ctx)
+	out = append(out, s.kerioCategories(ctx)...)
+	if out == nil {
+		out = []logCategoryDTO{}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// unifiCategories reads recent UniFi logs from Loki, parses their CEF payload and
+// groups them by CEF event name.
+func (s *Server) unifiCategories(ctx context.Context) []logCategoryDTO {
 	lines := s.loki.recent(ctx, `{vendor="unifi"}`, 24*time.Hour, 800)
 
 	cols := []string{"Vaxt", "Səviyyə", "Cihaz", "Detal"}
@@ -67,10 +78,63 @@ func (s *Server) handleLogsCategories(w http.ResponseWriter, r *http.Request) {
 	for _, k := range order {
 		out = append(out, *cats[k])
 	}
-	if out == nil {
-		out = []logCategoryDTO{}
+	return out
+}
+
+// kerioCategories reads recent Kerio firewall logs from Loki and groups them by
+// firewall rule (the parsed [Rule] name / quoted rule). Each row shows the verdict
+// (blok/icazə), the source IP and the raw detail line.
+func (s *Server) kerioCategories(ctx context.Context) []logCategoryDTO {
+	lines := s.loki.recent(ctx, `{vendor="kerio"}`, 24*time.Hour, 1500)
+
+	cols := []string{"Vaxt", "Əməl", "Mənbə", "Detal"}
+	order := []string{}
+	cats := map[string]*logCategoryDTO{}
+
+	get := func(label string) *logCategoryDTO {
+		key := "kerio-" + slug(label) // namespaced so it can't collide with a UniFi key
+		c, ok := cats[key]
+		if !ok {
+			c = &logCategoryDTO{Key: key, Label: label, Vendor: "kerio", Columns: cols, Rows: [][]any{}}
+			cats[key] = c
+			order = append(order, key)
+		}
+		return c
 	}
-	writeJSON(w, http.StatusOK, out)
+
+	for _, ln := range lines {
+		ev, ok := parseKerio(ln.Msg)
+		if !ok {
+			continue
+		}
+		label := ev.rule
+		if label == "" {
+			label = "Digər"
+		}
+		verdict, kind := "blok", "warn"
+		if ev.action == "allow" {
+			verdict, kind = "icazə", "info"
+		}
+		c := get(label)
+		c.Count++
+		if len(c.Rows) < 120 {
+			c.Rows = append(c.Rows, []any{ln.Time, pill{Text: verdict, Kind: kind}, ev.srcIP, kerioDetail(ln.Msg)})
+		}
+	}
+
+	out := make([]logCategoryDTO, 0, len(order))
+	for _, k := range order {
+		out = append(out, *cats[k])
+	}
+	return out
+}
+
+// kerioDetail strips the leading "KerioControl:" tag for display.
+func kerioDetail(msg string) string {
+	if i := strings.Index(msg, "KerioControl:"); i >= 0 {
+		return strings.TrimSpace(msg[i+len("KerioControl:"):])
+	}
+	return strings.TrimSpace(msg)
 }
 
 // friendlyLog renders a (JSON-decoded) log line as a short human-readable string
