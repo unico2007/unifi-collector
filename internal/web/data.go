@@ -75,7 +75,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	} else {
 		o.Health = 100
 	}
-	o.Alerts = len(s.activeAlerts(ctx)) // real active-alert count (same engine as the Alerts page)
+	o.Alerts = len(s.activeAlerts(ctx, s.astore.thresholds())) // real active-alert count (same engine as the Alerts page)
 
 	dur, step := parseRange(r.URL.Query().Get("range"))
 	o.ClientSeries, _ = s.prom.rangeSeries(ctx, `sum(unifi_clients_total)`, dur, step)

@@ -116,10 +116,25 @@ export interface Alert {
   value: string;
 }
 
+export interface AlertThresholds {
+  cpuPercent: number;
+  memoryPercent: number;
+}
+
+export interface AlertHistoryRow {
+  level: "critical" | "warning";
+  rule: string;
+  target: string;
+  message: string;
+  firedAt: number; // unix seconds
+  resolvedAt: number; // 0 = still active
+}
+
 export interface AlertsData {
   active: Alert[];
   counts: { critical: number; warning: number };
   rules: { name: string; condition: string; level: string }[];
+  thresholds: AlertThresholds;
 }
 
 export interface TopoNode {
@@ -165,6 +180,17 @@ export const api = {
   wifi: () => get<Wifi>("/wifi", mockWifi),
   firewall: () => get<Firewall>("/firewall", mockFirewall),
   alerts: () => get<AlertsData>("/alerts", mockAlerts),
+  alertHistory: () => get<AlertHistoryRow[]>("/alerts/history", mockAlertHistory),
+  updateAlertThresholds: async (t: AlertThresholds): Promise<AlertThresholds> => {
+    const r = await fetch("/api/alerts/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(t),
+    });
+    if (!r.ok) throw new Error(String(r.status));
+    return (await r.json()) as AlertThresholds;
+  },
   topology: () => get<Topology>("/topology", mockTopology),
   device: (name: string, range: TimeRange = "24h") =>
     get<DeviceDetail>(`/devices/${encodeURIComponent(name)}?range=${range}`, mockDeviceDetail(name)),
@@ -438,7 +464,16 @@ const mockAlerts: AlertsData = {
     { name: "Yaddaş yüksək", condition: "unifi_device_memory_percent > 90", level: "warning" },
     { name: "Subsystem problemi", condition: "unifi_health_status < 1", level: "warning" },
   ],
+  thresholds: { cpuPercent: 85, memoryPercent: 90 },
 };
+
+const now = Math.floor(Date.now() / 1000);
+const mockAlertHistory: AlertHistoryRow[] = [
+  { level: "critical", rule: "Cihaz offline", target: "AP-Zirzəmi", message: "AP-Zirzəmi (uap) offline-dır", firedAt: now - 1800, resolvedAt: 0 },
+  { level: "warning", rule: "CPU yüksək", target: "AP-Ofis-1", message: "AP-Ofis-1: CPU 88%", firedAt: now - 900, resolvedAt: 0 },
+  { level: "warning", rule: "Yaddaş yüksək", target: "AP-Ofis-2", message: "AP-Ofis-2: yaddaş 92%", firedAt: now - 7200, resolvedAt: now - 5400 },
+  { level: "critical", rule: "Cihaz offline", target: "AP-Anbar", message: "AP-Anbar (uap) offline-dır", firedAt: now - 14400, resolvedAt: now - 12600 },
+];
 
 const mockTopology: Topology = {
   edge: [

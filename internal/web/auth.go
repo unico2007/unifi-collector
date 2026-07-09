@@ -43,6 +43,10 @@ func OpenUserStore(path string) (*userStore, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Serialize DB access to one connection: the background alert evaluator and
+	// the HTTP handlers share this SQLite file, and a single connection avoids
+	// "database is locked" errors under concurrent writes (traffic is low).
+	db.SetMaxOpenConns(1)
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS users (
 		username TEXT PRIMARY KEY,
 		password_hash TEXT NOT NULL,
@@ -236,6 +240,23 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := s.currentSession(r); !ok {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+			return
+		}
+		next(w, r)
+	}
+}
+
+// requireAdmin wraps a handler so only authenticated admins reach it. A valid
+// non-admin session gets 403; no session gets 401.
+func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sess, ok := s.currentSession(r)
+		if !ok {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+			return
+		}
+		if sess.role != "admin" {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "yalnız admin"})
 			return
 		}
 		next(w, r)

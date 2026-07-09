@@ -1,5 +1,7 @@
-import { api, AlertsData } from "../lib/api";
-import { usePolling } from "../lib/refresh";
+import { useEffect, useState } from "react";
+import { api, AlertsData, AlertHistoryRow, AlertThresholds } from "../lib/api";
+import { usePolling, useRefresh } from "../lib/refresh";
+import { useAuth } from "../lib/auth";
 import { StatCard } from "../components/charts";
 import { PageSkeleton } from "../components/Skeleton";
 
@@ -8,9 +10,22 @@ const levelStyle: Record<string, { stripe: string; pill: string; label: string }
   warning: { stripe: "bg-amber-500", pill: "bg-amber-50 text-amber-700", label: "Xəbərdarlıq" },
 };
 
+const fmtTime = (s: number) => new Date(s * 1000).toLocaleTimeString("az", { hour: "2-digit", minute: "2-digit" });
+
+function fmtDuration(sec: number): string {
+  if (sec < 60) return `${sec} san`;
+  const m = Math.floor(sec / 60);
+  if (m < 60) return `${m} dəq`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return rm ? `${h} sa ${rm} dəq` : `${h} sa`;
+}
+
 export default function AlertsPage() {
+  const { user } = useAuth();
   const { data: d } = usePolling<AlertsData>(() => api.alerts());
-  if (!d) return <PageSkeleton stats={2} cards={2} />;
+  const { data: history } = usePolling<AlertHistoryRow[]>(() => api.alertHistory());
+  if (!d) return <PageSkeleton stats={4} cards={2} />;
 
   const healthy = d.active.length === 0;
 
@@ -55,25 +70,129 @@ export default function AlertsPage() {
         )}
       </div>
 
-      {/* Rules */}
-      <div className="card">
-        <div className="px-4 py-3 border-b border-line text-sm font-medium">Qaydalar (həddlər)</div>
-        <div className="divide-y divide-line">
-          {d.rules.map((r, i) => (
-            <div key={i} className="flex items-center gap-3 px-4 py-2.5">
-              <span className={`pill ${(levelStyle[r.level] ?? levelStyle.warning).pill}`}>
-                {(levelStyle[r.level] ?? levelStyle.warning).label}
-              </span>
-              <span className="text-sm">{r.name}</span>
-              <span className="ml-auto font-mono text-xs text-muted">{r.condition}</span>
+      <div className="grid lg:grid-cols-2 gap-4">
+        {/* Rules + editable thresholds */}
+        <div className="card">
+          <div className="px-4 py-3 border-b border-line text-sm font-medium">Qaydalar (həddlər)</div>
+          <ThresholdEditor thresholds={d.thresholds} isAdmin={user?.role === "admin"} />
+          <div className="divide-y divide-line">
+            {d.rules.map((r, i) => (
+              <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+                <span className={`pill ${(levelStyle[r.level] ?? levelStyle.warning).pill}`}>
+                  {(levelStyle[r.level] ?? levelStyle.warning).label}
+                </span>
+                <span className="text-sm">{r.name}</span>
+                <span className="ml-auto font-mono text-xs text-muted">{r.condition}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* History timeline */}
+        <div className="card">
+          <div className="px-4 py-3 border-b border-line text-sm font-medium">Alert tarixçəsi</div>
+          {!history || history.length === 0 ? (
+            <div className="p-8 text-center text-muted text-sm">Hələ qeyd olunmuş alert yoxdur.</div>
+          ) : (
+            <div className="divide-y divide-line max-h-96 overflow-auto">
+              {history.map((h, i) => {
+                const s = levelStyle[h.level] ?? levelStyle.warning;
+                const active = h.resolvedAt === 0;
+                const end = active ? Math.floor(Date.now() / 1000) : h.resolvedAt;
+                return (
+                  <div key={i} className="flex items-start gap-3 px-4 py-2.5">
+                    <div className={`w-1.5 h-1.5 mt-1.5 rounded-full shrink-0 ${s.stripe}`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium truncate">{h.target}</span>
+                        <span className="text-xs text-muted">{h.rule}</span>
+                        {active && <span className="pill bg-red-50 text-red-700">aktiv</span>}
+                      </div>
+                      <div className="text-xs text-muted mt-0.5 truncate">{h.message}</div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-xs font-mono text-muted whitespace-nowrap">
+                        {fmtTime(h.firedAt)}
+                        {!active && ` → ${fmtTime(h.resolvedAt)}`}
+                      </div>
+                      <div className="text-[11px] text-slate-400">{fmtDuration(end - h.firedAt)}</div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          ))}
+          )}
         </div>
       </div>
+
       <p className="text-xs text-muted">
-        Qaydalar hər açılışda Prometheus-dan canlı qiymətləndirilir. Konfiqurasiya olunan həddlər və tarixçə növbəti mərhələdədir.
+        Qaydalar hər açılışda Prometheus-dan canlı qiymətləndirilir; tarixçə fonda hər 30 saniyədə yazılır.
+        {user?.role === "admin" ? " CPU/yaddaş həddlərini yuxarıdan dəyişə bilərsiniz." : " Həddləri yalnız admin dəyişə bilər."}
       </p>
     </div>
+  );
+}
+
+function ThresholdEditor({ thresholds, isAdmin }: { thresholds: AlertThresholds; isAdmin: boolean }) {
+  const { refresh } = useRefresh();
+  const [cpu, setCpu] = useState(thresholds.cpuPercent);
+  const [mem, setMem] = useState(thresholds.memoryPercent);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState(false);
+
+  // Keep inputs in sync when the server value changes (e.g. another admin saved).
+  useEffect(() => {
+    setCpu(thresholds.cpuPercent);
+    setMem(thresholds.memoryPercent);
+  }, [thresholds.cpuPercent, thresholds.memoryPercent]);
+
+  const dirty = cpu !== thresholds.cpuPercent || mem !== thresholds.memoryPercent;
+
+  async function save() {
+    setSaving(true);
+    setSaved(false);
+    setError(false);
+    try {
+      await api.updateAlertThresholds({ cpuPercent: cpu, memoryPercent: mem });
+      setSaved(true);
+      refresh(); // re-fetch alerts so rules + active list reflect the new limits
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      setError(true);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!isAdmin) return null;
+
+  return (
+    <div className="px-4 py-3 border-b border-line bg-page/40 flex flex-wrap items-end gap-4">
+      <Field label="CPU həddi (%)" value={cpu} onChange={setCpu} />
+      <Field label="Yaddaş həddi (%)" value={mem} onChange={setMem} />
+      <button className="btn btn-primary" onClick={save} disabled={saving || !dirty}>
+        {saving ? "Saxlanılır..." : "Yadda saxla"}
+      </button>
+      {saved && <span className="text-xs text-green-600">✓ Saxlanıldı</span>}
+      {error && <span className="text-xs text-red-600">Saxlanmadı</span>}
+    </div>
+  );
+}
+
+function Field({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <label className="text-xs text-muted">
+      <div className="mb-1">{label}</div>
+      <input
+        type="number"
+        min={1}
+        max={100}
+        className="input w-24"
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+    </label>
   );
 }
 

@@ -32,6 +32,7 @@ type Server struct {
 	log     *zap.Logger
 	http    *http.Server
 	users   *userStore
+	astore  *alertStore
 	signer  *signer
 	prom    *promClient
 	loki    *lokiClient
@@ -40,10 +41,15 @@ type Server struct {
 
 // New wires the server. The caller owns the userStore lifecycle via Close.
 func New(cfg Config, users *userStore, log *zap.Logger) (*Server, error) {
+	astore, err := newAlertStore(users.db)
+	if err != nil {
+		return nil, err
+	}
 	s := &Server{
 		cfg:    cfg,
 		log:    log,
 		users:  users,
+		astore: astore,
 		signer: newSigner(users.secret),
 		prom:   newPromClient(cfg.PrometheusURL),
 		loki:   newLokiClient(cfg.LokiURL),
@@ -73,6 +79,9 @@ func New(cfg Config, users *userStore, log *zap.Logger) (*Server, error) {
 	mux.HandleFunc("GET /api/traffic", s.requireAuth(s.handleTraffic))
 	mux.HandleFunc("GET /api/firewall", s.requireAuth(s.handleFirewall))
 	mux.HandleFunc("GET /api/alerts", s.requireAuth(s.handleAlerts))
+	mux.HandleFunc("GET /api/alerts/history", s.requireAuth(s.handleAlertHistory))
+	mux.HandleFunc("GET /api/alerts/settings", s.requireAuth(s.handleAlertSettings))
+	mux.HandleFunc("PUT /api/alerts/settings", s.requireAdmin(s.handleAlertSettingsUpdate))
 	mux.HandleFunc("GET /api/topology", s.requireAuth(s.handleTopology))
 	mux.HandleFunc("GET /api/logs/categories", s.requireAuth(s.handleLogsCategories))
 
@@ -121,8 +130,41 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, filepath.Join(s.cfg.StaticDir, "index.html"))
 }
 
+// runAlertEvaluator periodically evaluates the alert rules and records
+// fire/resolve transitions to the history table, so the timeline reflects real
+// events even when nobody is viewing the Alerts page. Runs until ctx is done.
+func (s *Server) runAlertEvaluator(ctx context.Context) {
+	const interval = 30 * time.Second
+	evaluate := func() {
+		ectx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		// Guard: if Prometheus is unreachable, activeAlerts() returns empty and we
+		// would wrongly resolve every open alert (then re-fire on recovery). Skip
+		// the tick instead so the history stays clean during a Prometheus blip.
+		if _, err := s.prom.scalar(ectx, "vector(1)"); err != nil {
+			return
+		}
+		active := s.activeAlerts(ectx, s.astore.thresholds())
+		if err := s.astore.recordTransitions(active); err != nil {
+			s.log.Warn("alert history record failed", zap.Error(err))
+		}
+	}
+	evaluate() // once at startup so history starts immediately
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			evaluate()
+		}
+	}
+}
+
 // Run starts the server and blocks until ctx is cancelled.
 func (s *Server) Run(ctx context.Context) error {
+	go s.runAlertEvaluator(ctx)
 	errCh := make(chan error, 1)
 	go func() {
 		s.log.Info("bff listening",
