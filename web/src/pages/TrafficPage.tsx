@@ -22,7 +22,7 @@ export default function TrafficPage() {
         <StatCard label="Endirmə (RX)" value={t.totalRx} tone="brand" spark={t.rx} icon={<Ico d="M12 5v14M19 12l-7 7-7-7" />} />
         <StatCard label="Yükləmə (TX)" value={t.totalTx} tone="green" spark={t.tx} icon={<Ico d="M12 19V5M5 12l7-7 7 7" />} />
         <StatCard label="Cari sürət" value={fmtMbps(current)} sub="RX+TX indi" tone="slate" icon={<Ico d="M22 12h-4l-3 9L9 3l-3 9H2" />} />
-        <StatCard label="Ən yüksək sürət" value={fmtMbps(peak)} sub="24 saat zirvə" tone="amber" icon={<Ico d="M13 2L3 14h9l-1 8 10-12h-9z" />} />
+        <StatCard label="Ən yüksək sürət" value={fmtMbps(peak)} sub={`${rangeLabel[range]} zirvə`} tone="amber" icon={<Ico d="M13 2L3 14h9l-1 8 10-12h-9z" />} />
       </div>
 
       <Card title={`Bant genişliyi (${rangeLabel[range]})`} subtitle="Endirmə və yükləmə" right={<RangeSelector value={range} onChange={setRange} />}>
