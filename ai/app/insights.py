@@ -43,6 +43,12 @@ def _instant(data: dict) -> list[tuple[dict, float]]:
     return out
 
 
+def _scalar(data: dict) -> float:
+    """Single value from an aggregate query like count(...), else 0."""
+    inst = _instant(data)
+    return inst[0][1] if inst else 0.0
+
+
 def _zscore(values: list[float]) -> tuple[float, float]:
     """Return (current_value, z_score_vs_history). z=0 if not enough data."""
     if len(values) < 6:
@@ -132,6 +138,54 @@ async def _memory_forecast() -> list[dict]:
     return out
 
 
+async def _reboot_devices() -> list[dict]:
+    # Devices whose uptime is under 30 min likely rebooted recently.
+    data = await prom.query(
+        'unifi_device_uptime_seconds < 1800 and unifi_device_uptime_seconds > 60'
+    )
+    out = []
+    for labels, up in _instant(data):
+        name = labels.get("name") or labels.get("mac", "?")
+        mins = int(up // 60)
+        out.append({
+            "level": "info",
+            "title": f"{name} yenidən başladı",
+            "detail": f"Cihaz təxminən {mins} dəqiqə əvvəl yenidən başladı (uptime {mins} dəq).",
+        })
+    return out
+
+
+async def _weak_signal_clients() -> list[dict]:
+    # Flag only when a real SHARE of Wi-Fi clients are weak, so it doesn't fire on
+    # the handful of poor-signal clients that always exist.
+    weak = _scalar(await prom.query('count(unifi_client_rssi < -75)'))
+    total = _scalar(await prom.query('count(unifi_client_rssi < 0)'))
+    out = []
+    if total >= 20 and weak / total >= 0.30:
+        pct = round(100 * weak / total)
+        out.append({
+            "level": "warn",
+            "title": "Zəif WiFi siqnalı",
+            "detail": f"Klientlərin {pct}%-də ({int(weak)}/{int(total)}) siqnal < -75 dBm — mümkün əhatə və ya AP problemi.",
+        })
+    return out
+
+
+async def _sustained_high_memory() -> list[dict]:
+    # Devices whose memory has been high for a while (complements the z-score
+    # spike detector and the forecast: a flat-but-high device is caught here).
+    data = await prom.query('avg_over_time(unifi_device_memory_percent[15m]) > 88')
+    out = []
+    for labels, avg in _instant(data):
+        name = labels.get("name") or labels.get("mac", "?")
+        out.append({
+            "level": "warn",
+            "title": f"{name}: yaddaş davamlı yüksək",
+            "detail": f"Son 15 dəqiqədə yaddaş orta {avg:.0f}% — davamlı yüksəkdir (mümkün yaddaş sızması).",
+        })
+    return out
+
+
 async def _safe(coro) -> list[dict]:
     """Run one insight collector, swallowing errors so a single bad query
     (e.g. an unsupported PromQL feature) never fails the whole endpoint."""
@@ -149,6 +203,9 @@ async def compute() -> dict:
     insights += await _safe(_metric_anomalies("unifi_device_memory_percent", "%", 75, 2.5, "yaddaş"))
     insights += await _safe(_client_trend())
     insights += await _safe(_memory_forecast())
+    insights += await _safe(_reboot_devices())
+    insights += await _safe(_weak_signal_clients())
+    insights += await _safe(_sustained_high_memory())
 
     insights.sort(key=lambda i: _RANK.get(i["level"], 3))
 
