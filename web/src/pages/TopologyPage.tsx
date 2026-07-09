@@ -3,51 +3,106 @@ import { api, Topology, TopoNode } from "../lib/api";
 import { usePolling } from "../lib/refresh";
 import { PageSkeleton } from "../components/Skeleton";
 
-function StateDot({ state }: { state: string }) {
-  const on = state === "online";
-  return <span className={`inline-block w-2 h-2 rounded-full ${on ? "bg-green-500" : "bg-red-500"}`} />;
-}
-
 function rssiTone(rssi: number) {
   if (rssi >= -60) return "text-green-600";
   if (rssi >= -72) return "text-amber-600";
   return "text-red-600";
 }
 
-function TierLabel({ children }: { children: React.ReactNode }) {
-  return <div className="text-[11px] uppercase tracking-wide text-slate-400 mb-2">{children}</div>;
+function trunc(s: string, n: number) {
+  return s.length > n ? s.slice(0, n - 1) + "…" : s;
 }
 
-function Connector() {
-  return (
-    <div className="flex flex-col items-center py-1 text-slate-300">
-      <div className="w-px h-5 bg-line" />
-    </div>
-  );
-}
+// TopoGraph draws the network as a dependency-free node-link SVG: edge (gateway)
+// on top, optional switch tier, then the APs fanning out below. Links are drawn
+// from each tier to the centre of the tier above (the collector groups devices by
+// type, not by physical port, so this shows the logical hierarchy). Click an AP.
+function TopoGraph({
+  d,
+  sel,
+  onSelect,
+}: {
+  d: Topology;
+  sel: string | null;
+  onSelect: (name: string) => void;
+}) {
+  const tiers: { key: string; nodes: TopoNode[]; selectable: boolean }[] = [
+    { key: "edge", nodes: d.edge, selectable: false },
+    ...(d.switches.length ? [{ key: "sw", nodes: d.switches, selectable: false }] : []),
+    { key: "ap", nodes: d.aps, selectable: true },
+  ];
 
-function DeviceCard({ n, onClick, active }: { n: TopoNode; onClick?: () => void; active?: boolean }) {
-  const clickable = !!onClick;
+  const slotW = 122;
+  const nodeW = 106;
+  const nodeH = 48;
+  const rowGap = 82;
+  const padY = 14;
+  const maxCols = Math.max(...tiers.map((t) => t.nodes.length), 1);
+  const width = maxCols * slotW;
+  const height = tiers.length * (nodeH + rowGap) - rowGap + padY * 2;
+  const rowY = (i: number) => padY + i * (nodeH + rowGap);
+  const colX = (count: number, idx: number) => (width - count * slotW) / 2 + idx * slotW + slotW / 2;
+  const hubX = width / 2;
+
   return (
-    <button
-      onClick={onClick}
-      disabled={!clickable}
-      className={`card p-3 text-left transition-colors min-w-[150px] ${
-        clickable ? "hover:border-brand-300 cursor-pointer" : "cursor-default"
-      } ${active ? "border-brand-500 ring-2 ring-brand-100" : ""}`}
-    >
-      <div className="flex items-center gap-2">
-        <StateDot state={n.state} />
-        <span className="font-medium text-sm truncate">{n.name}</span>
-      </div>
-      <div className="text-xs text-muted mt-1">{n.model !== "-" ? n.model : n.type}</div>
-      <div className="flex items-center gap-2 mt-2">
-        {n.ip !== "-" && <span className="font-mono text-[11px] text-muted">{n.ip}</span>}
-        {n.type === "uap" && (
-          <span className="pill bg-brand-50 text-brand-700 ml-auto">{n.clients} klient</span>
+    <div className="overflow-x-auto">
+      <svg width={width} height={height} className="block mx-auto">
+        {/* links: each node fans up to the centre of the tier above */}
+        {tiers.map((t, ti) =>
+          ti === 0
+            ? null
+            : t.nodes.map((n, ni) => {
+                const x = colX(t.nodes.length, ni);
+                const y = rowY(ti);
+                const py = rowY(ti - 1) + nodeH;
+                const mid = (py + y) / 2;
+                return (
+                  <path
+                    key={`l-${t.key}-${ni}`}
+                    d={`M${hubX},${py} C${hubX},${mid} ${x},${mid} ${x},${y}`}
+                    className={sel === n.name ? "stroke-brand-400" : "stroke-line"}
+                    fill="none"
+                    strokeWidth="1.5"
+                  />
+                );
+              }),
         )}
-      </div>
-    </button>
+
+        {/* nodes */}
+        {tiers.map((t, ti) =>
+          t.nodes.map((n, ni) => {
+            const x = colX(t.nodes.length, ni) - nodeW / 2;
+            const y = rowY(ti);
+            const active = sel === n.name;
+            const on = n.state === "online";
+            const sub = n.type === "uap" ? `${n.clients} klient` : n.model !== "-" ? n.model : n.type;
+            return (
+              <g
+                key={`${t.key}-${n.name}`}
+                transform={`translate(${x},${y})`}
+                onClick={t.selectable ? () => onSelect(n.name) : undefined}
+                className={t.selectable ? "cursor-pointer" : ""}
+              >
+                <rect
+                  width={nodeW}
+                  height={nodeH}
+                  rx="10"
+                  className={`fill-card ${active ? "stroke-brand-500" : "stroke-line"}`}
+                  strokeWidth={active ? 2 : 1}
+                />
+                <circle cx="13" cy="16" r="3.5" className={on ? "fill-green-500" : "fill-red-500"} />
+                <text x="24" y="19.5" className="fill-ink" style={{ fontSize: 11, fontWeight: 600 }}>
+                  {trunc(n.name, 13)}
+                </text>
+                <text x="13" y="36" className="fill-muted" style={{ fontSize: 9.5 }}>
+                  {trunc(sub, 15)}
+                </text>
+              </g>
+            );
+          }),
+        )}
+      </svg>
+    </div>
   );
 }
 
@@ -67,35 +122,11 @@ export default function TopologyPage() {
         <div className="card p-4"><div className="text-sm text-muted">Klientlər</div><div className="text-2xl font-semibold mt-1">{d.stats.clients}</div></div>
       </div>
 
-      <div className="card p-6">
-        {/* Tier 1: edge / firewall */}
-        <TierLabel>Şəbəkə çıxışı (Firewall / Gateway)</TierLabel>
-        <div className="flex flex-wrap gap-3 justify-center">
-          {d.edge.map((n) => <DeviceCard key={n.name} n={n} />)}
+      <div className="card p-4">
+        <div className="text-[11px] uppercase tracking-wide text-slate-400 mb-2">
+          Şəbəkə xəritəsi — AP-yə kliklə (klientləri gör)
         </div>
-
-        {(d.switches.length > 0) && (
-          <>
-            <Connector />
-            <TierLabel>Switch-lər</TierLabel>
-            <div className="flex flex-wrap gap-3 justify-center">
-              {d.switches.map((n) => <DeviceCard key={n.name} n={n} />)}
-            </div>
-          </>
-        )}
-
-        <Connector />
-        <TierLabel>Access Point-lər — klientləri görmək üçün kliklə</TierLabel>
-        <div className="flex flex-wrap gap-3 justify-center">
-          {d.aps.map((n) => (
-            <DeviceCard
-              key={n.name}
-              n={n}
-              active={sel === n.name}
-              onClick={() => setSel(sel === n.name ? null : n.name)}
-            />
-          ))}
-        </div>
+        <TopoGraph d={d} sel={sel} onSelect={(name) => setSel(sel === name ? null : name)} />
       </div>
 
       {/* Selected AP's clients */}
