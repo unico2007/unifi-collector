@@ -48,7 +48,26 @@ Rules:
 - Keep any time range <= {'{'}max{'}'}.
 - Output STRICT JSON: {{"source":"prometheus"|"loki"|"knowledge","query":"...","reason":"..."}}
 - Do NOT invent metric or label names outside the schema.
+- Add a label filter ONLY when the user explicitly names that value (a specific
+  device name, site, AP, or vendor). For general questions ("the network",
+  "all devices/clients", "how many ...") use the BARE metric with NO label
+  selector — never guess a site/name/label the user did not say.
 """.replace("{max}", "24h")
+
+# Few-shot examples kept as a plain (non-f) string so the JSON braces don't need
+# doubling. They anchor the "don't invent labels" rule — the exact failure where
+# qwen turned "şəbəkədə" (in the network) into site="sebek" and got empty results.
+PLANNER_EXAMPLES = (
+    "\nExamples:\n"
+    "Q: neçə cihaz offline?\n"
+    '{"source":"prometheus","query":"count(unifi_device_up == 0)","reason":"offline count, general question so no label"}\n'
+    "Q: şəbəkədə neçə klient var?\n"
+    '{"source":"prometheus","query":"sum(unifi_clients_total)","reason":"total clients, no label filter"}\n'
+    "Q: 5.2.Left_Nano HD cihazının CPU-su neçədir?\n"
+    '{"source":"prometheus","query":"unifi_device_cpu_percent{name=\\"5.2.Left_Nano HD\\"}","reason":"user named a specific device, so filter by name"}\n'
+)
+
+PLANNER_SYSTEM = PLANNER_SYSTEM + PLANNER_EXAMPLES
 
 # Answers are generated in English: local small models (qwen2.5:7b on a 6 GB GPU)
 # are far more fluent and accurate in English than in Azerbaijani, and network
