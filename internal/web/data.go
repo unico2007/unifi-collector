@@ -30,6 +30,7 @@ type clientDTO struct {
 	RSSI  float64 `json:"rssi"`
 	Rx    string  `json:"rx"`
 	Tx    string  `json:"tx"`
+	Data  string  `json:"data"`
 	IP    string  `json:"ip"`
 	Since string  `json:"since"`
 }
@@ -188,6 +189,8 @@ func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 	}
 	rx := s.byMAC(ctx, `unifi_client_rx_rate`)
 	tx := s.byMAC(ctx, `unifi_client_tx_rate`)
+	rxb := s.byMAC(ctx, `unifi_client_rx_bytes`)
+	txb := s.byMAC(ctx, `unifi_client_tx_bytes`)
 	conn := s.byMAC(ctx, `unifi_client_connected_seconds`)
 	names := s.apNames(ctx)
 	ips := s.clientIPs(ctx)
@@ -203,6 +206,7 @@ func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 			RSSI:  c.value,
 			Rx:    formatRate(rx[mac]),
 			Tx:    formatRate(tx[mac]),
+			Data:  formatBytes(rxb[mac] + txb[mac]),
 			IP:    ipOrDash(ips[mac]),
 			Since: formatUptime(conn[mac]),
 		})

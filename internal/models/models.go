@@ -47,6 +47,8 @@ type Client struct {
 	RSSI          float64
 	TxRate        float64 // bits/s
 	RxRate        float64 // bits/s
+	TxBytes       float64 // cumulative bytes this session
+	RxBytes       float64 // cumulative bytes this session
 	ConnectedTime time.Duration
 
 	Labels map[string]string

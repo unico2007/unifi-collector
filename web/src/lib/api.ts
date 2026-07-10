@@ -25,6 +25,7 @@ export interface Client {
   rssi: number; // dBm
   rx: string;
   tx: string;
+  data: string;
   ip: string;
   since: string;
 }
@@ -282,10 +283,10 @@ const mockDevices: Device[] = [
 ];
 
 const mockClients: Client[] = [
-  { name: "a.mammadov-mbp", mac: "3c:22:fb:aa:01", ap: "AP-Ofis-1", vlan: "10", rssi: -48, rx: "22 Mbps", tx: "8 Mbps", ip: "10.10.0.55", since: "2s 14m" },
-  { name: "r.aliyeva-iphone", mac: "a4:83:e7:bb:02", ap: "AP-Ofis-2", vlan: "10", rssi: -66, rx: "12 Mbps", tx: "3 Mbps", ip: "10.10.0.61", since: "44m" },
-  { name: "k.huseynov-pc", mac: "d8:cb:8a:cc:03", ap: "AP-Ofis-1", vlan: "20", rssi: -72, rx: "6 Mbps", tx: "1 Mbps", ip: "10.10.0.77", since: "3s 2m" },
-  { name: "Guest-2f1a", mac: "b8:27:eb:dd:04", ap: "AP-Ofis-2", vlan: "90", rssi: -58, rx: "5 Mbps", tx: "2 Mbps", ip: "10.10.90.4", since: "18m" },
+  { name: "a.mammadov-mbp", mac: "3c:22:fb:aa:01", ap: "AP-Ofis-1", vlan: "10", rssi: -48, rx: "22 Mbps", tx: "8 Mbps", data: "3.4 GB", ip: "10.10.0.55", since: "2s 14m" },
+  { name: "r.aliyeva-iphone", mac: "a4:83:e7:bb:02", ap: "AP-Ofis-2", vlan: "10", rssi: -66, rx: "12 Mbps", tx: "3 Mbps", data: "870 MB", ip: "10.10.0.61", since: "44m" },
+  { name: "k.huseynov-pc", mac: "d8:cb:8a:cc:03", ap: "AP-Ofis-1", vlan: "20", rssi: -72, rx: "6 Mbps", tx: "1 Mbps", data: "12.1 GB", ip: "10.10.0.77", since: "3s 2m" },
+  { name: "Guest-2f1a", mac: "b8:27:eb:dd:04", ap: "AP-Ofis-2", vlan: "90", rssi: -58, rx: "5 Mbps", tx: "2 Mbps", data: "210 MB", ip: "10.10.90.4", since: "18m" },
 ];
 
 function pill(text: string, kind: "ok" | "no" | "warn" | "info") {

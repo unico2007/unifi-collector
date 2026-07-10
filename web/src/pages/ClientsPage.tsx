@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { api, Client } from "../lib/api";
 import { usePolling } from "../lib/refresh";
-import { Accessor, rateToNum, SortTh, useSort } from "../components/sortable";
+import { Accessor, bytesToNum, rateToNum, SortTh, useSort } from "../components/sortable";
 
-const clientCols = ["Ad / MAC", "AP", "VLAN", "Siqnal", "Endirmə", "Yükləmə", "IP", "Qoşulma vaxtı"];
+const clientCols = ["Ad / MAC", "AP", "VLAN", "Siqnal", "Endirmə", "Yükləmə", "Data", "IP", "Qoşulma vaxtı"];
 const clientAccessors: Accessor<Client>[] = [
   (c) => c.name || c.mac,
   (c) => c.ap,
@@ -11,6 +11,7 @@ const clientAccessors: Accessor<Client>[] = [
   (c) => c.rssi,
   (c) => rateToNum(c.rx),
   (c) => rateToNum(c.tx),
+  (c) => bytesToNum(c.data),
   (c) => c.ip,
   (c) => c.since,
 ];
@@ -70,6 +71,7 @@ export default function ClientsPage() {
                 <td className="px-3 py-2 border-b border-line"><Signal rssi={c.rssi} /></td>
                 <td className="px-3 py-2 border-b border-line">{c.rx}</td>
                 <td className="px-3 py-2 border-b border-line">{c.tx}</td>
+                <td className="px-3 py-2 border-b border-line tabular-nums">{c.data}</td>
                 <td className="px-3 py-2 border-b border-line font-mono text-xs">{c.ip}</td>
                 <td className="px-3 py-2 border-b border-line text-muted">{c.since}</td>
               </tr>

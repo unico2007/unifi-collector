@@ -20,6 +20,10 @@ type rawClient struct {
 	Signal   float64 `json:"signal"`  // actual signal strength in dBm (negative)
 	TxRate   float64 `json:"tx_rate"` // kbps
 	RxRate   float64 `json:"rx_rate"` // kbps
+	TxBytes  float64 `json:"tx_bytes"`
+	RxBytes  float64 `json:"rx_bytes"`
+	WiredTx  float64 `json:"wired-tx_bytes"` // wired clients report bytes here
+	WiredRx  float64 `json:"wired-rx_bytes"`
 	VLAN     int     `json:"vlan"`
 	Uptime   int64   `json:"uptime"`   // seconds connected
 	Radio    string  `json:"radio"`    // "ng"=2.4GHz, "na"=5GHz, "6e"=6GHz
@@ -95,8 +99,12 @@ func (c *Client) Clients(ctx context.Context) ([]models.Client, error) {
 			Band:        wifiBand(cl.Radio, cl.Channel, cl.IsWired),
 			RSSI:        clientRSSI(cl.Signal, cl.RSSI),
 			// UniFi reports negotiated rates in kbps; normalize to bits/s.
-			TxRate:        cl.TxRate * 1000,
-			RxRate:        cl.RxRate * 1000,
+			TxRate: cl.TxRate * 1000,
+			RxRate: cl.RxRate * 1000,
+			// Wireless clients report on tx_bytes/rx_bytes, wired on wired-*; one
+			// pair is 0, so summing gives the session total either way.
+			TxBytes:       cl.TxBytes + cl.WiredTx,
+			RxBytes:       cl.RxBytes + cl.WiredRx,
 			ConnectedTime: time.Duration(cl.Uptime) * time.Second,
 		})
 	}

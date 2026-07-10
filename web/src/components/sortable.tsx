@@ -78,3 +78,12 @@ export function rateToNum(s: string): number {
   }
   return n;
 }
+
+// bytesToNum normalises a formatted size ("3.4 GB", "870 MB", "0") to bytes
+// (binary units, matching the BFF's formatBytes) so a data-volume column sorts.
+export function bytesToNum(s: string): number {
+  const m = s.match(/([\d.]+)\s*(B|KB|MB|GB|TB|PB)?/i);
+  if (!m) return 0;
+  const exp = { b: 0, kb: 1, mb: 2, gb: 3, tb: 4, pb: 5 }[(m[2] || "b").toLowerCase()] ?? 0;
+  return parseFloat(m[1]) * 1024 ** exp;
+}
