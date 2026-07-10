@@ -1,12 +1,16 @@
-# Production override for the company server. It runs the image published to
+# Production override for the company server. It runs the images published to
 # GHCR by CI instead of building from source, and adds Watchtower to auto-pull
-# and restart the collector whenever a new :latest image is pushed.
+# and restart collector/web/ai whenever a new :latest image is pushed.
 #
-# Deploy on the server with:
-#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Deploy on the server (include the web + ai overlays so those services exist to
+# be overridden):
+#   docker compose -f docker-compose.yml -f docker-compose.ai.yml \
+#     -f docker-compose.web.yml -f docker-compose.prod.yml up -d
 #
-# Requires Docker Compose v2.24+ (for `!reset`) and the GHCR package made
-# public (or a `docker login ghcr.io` on the server).
+# Requires Docker Compose v2.24+ (for `!reset`) and the three GHCR packages made
+# public (or a `docker login ghcr.io` on the server). After this, a push to main
+# rebuilds the images in CI and Watchtower rolls them out within ~60s — no more
+# manual zip-download + build on the server.
 services:
   collector:
     # Drop the source build from the base file and pull the published image.
@@ -16,6 +20,20 @@ services:
     labels:
       # Only containers with this label are watched (see watchtower --label-enable),
       # so loki/prometheus/grafana are NOT auto-updated.
+      com.centurylinklabs.watchtower.enable: "true"
+
+  web:
+    build: !reset null
+    image: ghcr.io/unico2007/unifi-collector-web:latest
+    pull_policy: always
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+
+  ai:
+    build: !reset null
+    image: ghcr.io/unico2007/unifi-collector-ai:latest
+    pull_policy: always
+    labels:
       com.centurylinklabs.watchtower.enable: "true"
 
   watchtower:
