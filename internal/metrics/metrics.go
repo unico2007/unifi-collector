@@ -185,7 +185,12 @@ func (m *Metrics) RecordClients(clients []models.Client) {
 	bySite := map[[2]string]int{}
 	for _, c := range clients {
 		lv := []string{c.Vendor, c.Site, c.MAC, c.Name, c.ConnectedAP, c.VLAN, c.Band}
-		m.clientRSSI.WithLabelValues(lv...).Set(c.RSSI)
+		// RSSI is a WiFi-only concept: wired clients report no signal, and the
+		// resulting 0 would read downstream as the strongest possible value
+		// (0 dBm beats every quality threshold). No band means not on WiFi.
+		if c.Band != "" {
+			m.clientRSSI.WithLabelValues(lv...).Set(c.RSSI)
+		}
 		m.clientTxRate.WithLabelValues(lv...).Set(c.TxRate)
 		m.clientRxRate.WithLabelValues(lv...).Set(c.RxRate)
 		m.clientTxBytes.WithLabelValues(lv...).Set(c.TxBytes)

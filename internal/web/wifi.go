@@ -34,7 +34,11 @@ func (s *Server) handleWifi(w http.ResponseWriter, r *http.Request) {
 	d.RSSILabels = rssiBinLabels
 	d.RSSIBins = make([]int, len(rssiBinLabels))
 
-	clients, err := s.prom.query(ctx, `unifi_client_rssi`)
+	// band!="" keeps this to actual WiFi clients: wired clients used to be
+	// exported with rssi=0, which lands in the strongest bin and the "good"
+	// quality bucket. The collector no longer emits those series, but the
+	// filter also shields against data scraped by older collector versions.
+	clients, err := s.prom.query(ctx, `unifi_client_rssi{band!=""}`)
 	if err != nil {
 		d.ClientsPerAp, d.VLANSplit, d.BandSplit = []kv{}, []kv{}, []kv{}
 		writeJSON(w, http.StatusOK, d)

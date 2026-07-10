@@ -63,3 +63,28 @@ func TestRecordDevices_DevicesTotalByType(t *testing.T) {
 		t.Errorf("usw total = %v, want 1", got)
 	}
 }
+
+func TestRecordClients_WiredClientsGetNoRSSISeries(t *testing.T) {
+	m := New("unifi")
+
+	m.RecordClients([]models.Client{
+		{Vendor: "unifi", Site: "default", MAC: "aa", Name: "laptop", ConnectedAP: "ap1", VLAN: "1", Band: "5 GHz", RSSI: -55, RxBytes: 100},
+		{Vendor: "unifi", Site: "default", MAC: "bb", Name: "desktop", ConnectedAP: "sw1", VLAN: "1", Band: "", RSSI: 0, RxBytes: 200},
+	})
+
+	// Only the WiFi client may have an rssi series: a wired client's rssi=0
+	// would read as the strongest possible signal downstream.
+	if got := testutil.CollectAndCount(m.clientRSSI); got != 1 {
+		t.Errorf("rssi series = %d, want 1 (wired client must be skipped)", got)
+	}
+	// The wired client keeps all its other series.
+	if got := testutil.CollectAndCount(m.clientRxBytes); got != 2 {
+		t.Errorf("rx_bytes series = %d, want 2", got)
+	}
+	if got := testutil.CollectAndCount(m.clientInfo); got != 2 {
+		t.Errorf("info series = %d, want 2", got)
+	}
+	if got := testutil.ToFloat64(m.clientsTotal.WithLabelValues("unifi", "default")); got != 2 {
+		t.Errorf("clients_total = %v, want 2 (wired still counted as a client)", got)
+	}
+}
