@@ -77,3 +77,50 @@ func TestHourOf(t *testing.T) {
 		t.Errorf("hourOf empty = %d", h)
 	}
 }
+
+func TestKerioCompactAndTesvir(t *testing.T) {
+	cases := []struct {
+		name, msg, compact, tesvir string
+	}{
+		{
+			"inbound tcp",
+			`KerioControl: DENY "Admin panel block" packet from internet, proto:TCP, len:44, 172.104.249.240:51869 -> 89.147.252.244:443, flags:[ SYN ], seq:2734461468 ack:0, win:1025, tcplen:0`,
+			"TCP 172.104.249.240:51869 → 89.147.252.244:443 · SYN",
+			"İnternetdən TCP cəhdi (port 443)",
+		},
+		{
+			"inbound icmp",
+			`KerioControl: DENY "Admin panel block" packet from internet, proto:ICMP, len:40, 52.80.149.169 -> 89.147.252.244, type:8 code:0 id:36787 seq:0 ttl:226`,
+			"ICMP 52.80.149.169 → 89.147.252.244 · type 8",
+			"İnternetdən ping (ICMP)",
+		},
+		{
+			"outbound p2p",
+			`KerioControl: DENY [Rule] 'Peer to Peer traffic' [Connection] host (10.10.0.55):5123 -> peer (1.2.3.4):443, UDP [Content] Suspected P2P`,
+			"UDP 10.10.0.55:5123 → 1.2.3.4:443 · Suspected P2P",
+			"Daxili şəbəkədən UDP — Suspected P2P",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := kerioCompact(c.msg); got != c.compact {
+				t.Errorf("compact = %q, want %q", got, c.compact)
+			}
+			ev, ok := parseKerio(c.msg)
+			if !ok {
+				t.Fatal("parseKerio failed")
+			}
+			if got := kerioTesvir(ev, c.msg); got != c.tesvir {
+				t.Errorf("tesvir = %q, want %q", got, c.tesvir)
+			}
+		})
+	}
+}
+
+func TestKerioCompactFallback(t *testing.T) {
+	// A line without a parseable connection falls back to the stripped raw line.
+	msg := `KerioControl: DENY "weird rule" something with no connection`
+	if got := kerioCompact(msg); got != `DENY "weird rule" something with no connection` {
+		t.Errorf("fallback = %q", got)
+	}
+}

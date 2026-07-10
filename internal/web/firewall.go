@@ -104,7 +104,94 @@ type kerioEvent struct {
 var (
 	kerioIPRe    = regexp.MustCompile(`\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b`)
 	kerioProtoRe = regexp.MustCompile(`proto:([A-Za-z]+)`)
+	// src[:port] -> [peer ](dst)[:port] — tolerates both `IP:port` and
+	// `host (IP):port` shapes, and portless ICMP.
+	kerioConnRe     = regexp.MustCompile(`\(?(\d{1,3}(?:\.\d{1,3}){3})\)?(?::(\d+))?\s*->\s*(?:peer\s*)?\(?(\d{1,3}(?:\.\d{1,3}){3})\)?(?::(\d+))?`)
+	kerioFlagRe     = regexp.MustCompile(`flags:\[\s*([A-Z ]+?)\s*\]`)
+	kerioIcmpTypeRe = regexp.MustCompile(`type:(\d+)`)
 )
+
+// kerioConn returns "src[:port]" and "dst[:port]" from a Kerio line, or empty
+// strings when the connection can't be located.
+func kerioConn(msg string) (src, dst string) {
+	m := kerioConnRe.FindStringSubmatch(msg)
+	if m == nil {
+		return "", ""
+	}
+	src = m[1]
+	if m[2] != "" {
+		src += ":" + m[2]
+	}
+	dst = m[3]
+	if m[4] != "" {
+		dst += ":" + m[4]
+	}
+	return src, dst
+}
+
+// kerioExtra returns the single most meaningful qualifier for a line: the
+// [Content] classification, else the TCP flag, else the ICMP type.
+func kerioExtra(msg string) string {
+	if c := kerioContent(msg); c != "" {
+		return c
+	}
+	if f := kerioFlagRe.FindStringSubmatch(msg); f != nil {
+		return strings.TrimSpace(f[1])
+	}
+	if t := kerioIcmpTypeRe.FindStringSubmatch(msg); t != nil {
+		return "type " + t[1]
+	}
+	return ""
+}
+
+// kerioCompact renders a raw Kerio filter line as a compact technical detail —
+// "PROTO src → dst · EXTRA" — dropping len/seq/ack/win/tcplen/ttl noise. Falls
+// back to the stripped raw line when the connection can't be parsed.
+func kerioCompact(msg string) string {
+	src, dst := kerioConn(msg)
+	if src == "" || dst == "" {
+		return kerioDetail(msg)
+	}
+	out := strings.TrimSpace(kerioProto(msg) + " " + src + " → " + dst)
+	if e := kerioExtra(msg); e != "" {
+		out += " · " + e
+	}
+	return out
+}
+
+// kerioTesvir renders a plain-Azerbaijani one-liner for non-technical readers:
+// direction (internet vs LAN) + protocol + port/content. The verdict lives in the
+// separate "Əməl" column so it isn't repeated here.
+func kerioTesvir(ev kerioEvent, msg string) string {
+	origin := "Daxili şəbəkədən"
+	inbound := isPublicIP(ev.srcIP)
+	if inbound {
+		origin = "İnternetdən"
+	}
+	if ev.proto == "ICMP" {
+		if t := kerioIcmpTypeRe.FindStringSubmatch(msg); t != nil && t[1] == "8" {
+			return origin + " ping (ICMP)"
+		}
+		return origin + " ICMP paketi"
+	}
+	proto := ev.proto
+	if proto == "" {
+		proto = "paket"
+	}
+	desc := origin + " " + proto
+	if inbound {
+		desc += " cəhdi"
+	}
+	if ev.content != "" {
+		return desc + " — " + ev.content
+	}
+	if _, dst := kerioConn(msg); dst != "" {
+		if i := strings.LastIndexByte(dst, ':'); i >= 0 {
+			return desc + " (port " + dst[i+1:] + ")"
+		}
+	}
+	return desc
+}
 
 // parseKerio extracts the fields from one Kerio filter-log line. Handles both
 // shapes seen in the wild:

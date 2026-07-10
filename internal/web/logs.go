@@ -87,7 +87,7 @@ func (s *Server) unifiCategories(ctx context.Context) []logCategoryDTO {
 func (s *Server) kerioCategories(ctx context.Context) []logCategoryDTO {
 	lines := s.loki.recent(ctx, `{vendor="kerio"}`, 24*time.Hour, 1500)
 
-	cols := []string{"Vaxt", "Əməl", "Mənbə", "Detal"}
+	cols := []string{"Vaxt", "Əməl", "Mənbə", "Təsvir", "Detal"}
 	order := []string{}
 	cats := map[string]*logCategoryDTO{}
 
@@ -118,7 +118,10 @@ func (s *Server) kerioCategories(ctx context.Context) []logCategoryDTO {
 		c := get(label)
 		c.Count++
 		if len(c.Rows) < 120 {
-			c.Rows = append(c.Rows, []any{ln.Time, pill{Text: verdict, Kind: kind}, ev.srcIP, kerioDetail(ln.Msg)})
+			c.Rows = append(c.Rows, []any{
+				ln.Time, pill{Text: verdict, Kind: kind}, ev.srcIP,
+				kerioTesvir(ev, ln.Msg), kerioCompact(ln.Msg),
+			})
 		}
 	}
 
