@@ -58,6 +58,17 @@ async def knowledge_status():
     return {"ready": kb.ready, "chunks": len(kb.chunks), "sources": sources, "error": kb.error}
 
 
+@app.post("/ai/knowledge/reindex")
+async def knowledge_reindex():
+    """Force-rebuild the RAG index (re-reads the markdown corpus and re-snapshots
+    the live Prometheus device inventory) without restarting the container."""
+    await kb.rebuild()
+    sources: dict[str, int] = {}
+    for ch in kb.chunks:
+        sources[ch.source] = sources.get(ch.source, 0) + 1
+    return {"ready": kb.ready, "chunks": len(kb.chunks), "sources": sources, "error": kb.error}
+
+
 @app.post("/ai/chat")
 async def chat(body: ChatIn):
     return await agent.chat(body.question)

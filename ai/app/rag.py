@@ -181,6 +181,18 @@ class KnowledgeBase:
             self.error = None
             self._built = True
 
+    async def rebuild(self) -> None:
+        """Force a fresh index: re-read knowledge/*.md and re-snapshot the live
+        Prometheus inventory. Reset flags under the lock, then let ensure_ready
+        (which re-acquires the lock — asyncio.Lock isn't reentrant) rebuild."""
+        async with self._lock:
+            self._built = False
+            self.chunks = []
+            self.matrix = None
+            self.token_sets = []
+            self.error = None
+        await self.ensure_ready()
+
     async def search(self, query: str, k: int | None = None) -> list[Hit]:
         await self.ensure_ready()
         if not self.ready or self.matrix is None:
