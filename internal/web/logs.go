@@ -44,8 +44,10 @@ func (s *Server) unifiCategories(ctx context.Context) []logCategoryDTO {
 	order := []string{}
 	cats := map[string]*logCategoryDTO{}
 
-	get := func(label string) *logCategoryDTO {
-		key := slug(label)
+	// Keyed by the raw CEF event name (stable) but displayed with an Azerbaijani
+	// label, so grouping stays correct even when two events map to similar text.
+	get := func(keySrc, label string) *logCategoryDTO {
+		key := slug(keySrc)
 		c, ok := cats[key]
 		if !ok {
 			c = &logCategoryDTO{Key: key, Label: label, Vendor: "unifi", Columns: cols, Rows: [][]any{}}
@@ -57,17 +59,17 @@ func (s *Server) unifiCategories(ctx context.Context) []logCategoryDTO {
 
 	for _, ln := range lines {
 		name, device, msg, level, ok := parseCEF(ln.Msg)
-		label := name
+		keySrc, label := name, unifiEventAz(name)
 		detail := msg
 		if !ok {
-			label = "Digər"
+			keySrc, label = "diger", "Digər"
 			detail = ln.Msg
 			level = "info"
 		}
 		if detail == "" {
 			detail = name
 		}
-		c := get(label)
+		c := get(keySrc, label)
 		c.Count++
 		if len(c.Rows) < 120 { // cap payload per category
 			c.Rows = append(c.Rows, []any{ln.Time, pill{Text: level, Kind: levelKind(level)}, device, detail})
@@ -138,6 +140,39 @@ func kerioDetail(msg string) string {
 		return strings.TrimSpace(msg[i+len("KerioControl:"):])
 	}
 	return strings.TrimSpace(msg)
+}
+
+// unifiEventAz maps a UniFi CEF event name to a short Azerbaijani label for the
+// Logs page categories. Keyword-based so it tolerates wording variants; unknown
+// events fall back to their raw (English) name so nothing is hidden.
+func unifiEventAz(name string) string {
+	n := strings.ToLower(name)
+	switch {
+	case name == "":
+		return "Digər"
+	case strings.Contains(n, "admin accessed"):
+		return "Admin panelə giriş"
+	case strings.Contains(n, "backup"):
+		return "Ehtiyat nüsxə"
+	case strings.Contains(n, "config"):
+		return "Konfiqurasiya dəyişikliyi"
+	case strings.Contains(n, "login") || strings.Contains(n, "logged in") || strings.Contains(n, "signed in"):
+		return "Admin girişi"
+	case strings.Contains(n, "upgrad") || strings.Contains(n, "firmware"):
+		return "Firmware yeniləndi"
+	case strings.Contains(n, "restart") || strings.Contains(n, "reboot"):
+		return "Yenidən başladı"
+	case strings.Contains(n, "channel"):
+		return "Kanal dəyişdi"
+	case strings.Contains(n, "roam"):
+		return "Roaming (klient keçdi)"
+	case strings.Contains(n, "lost contact") || strings.Contains(n, "was disconnected") || strings.Contains(n, "disconnect"):
+		return "Ayrıldı"
+	case strings.Contains(n, "adopt") || strings.Contains(n, "connect"):
+		return "Qoşuldu"
+	default:
+		return name
+	}
 }
 
 // friendlyLog renders a (JSON-decoded) log line as a short human-readable string

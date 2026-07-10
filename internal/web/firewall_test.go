@@ -124,3 +124,21 @@ func TestKerioCompactFallback(t *testing.T) {
 		t.Errorf("fallback = %q", got)
 	}
 }
+
+func TestUnifiEventAz(t *testing.T) {
+	cases := map[string]string{
+		"Admin Accessed UniFi OS":  "Admin panelə giriş",
+		"Backup Created":           "Ehtiyat nüsxə",
+		"Admin Made Config Change": "Konfiqurasiya dəyişikliyi",
+		"Client Connected":         "Qoşuldu",
+		"User Disconnected":        "Ayrıldı",
+		"AP Channel Changed":       "Kanal dəyişdi",
+		"Some Unmapped Event":      "Some Unmapped Event", // fallback = raw
+		"":                         "Digər",
+	}
+	for in, want := range cases {
+		if got := unifiEventAz(in); got != want {
+			t.Errorf("unifiEventAz(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
