@@ -143,6 +143,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <Icon name="logout" />
             Çıxış
           </button>
+          <div className="px-3 pt-1.5 text-[10px] text-slate-400">Unico · v1.0</div>
         </div>
       </aside>
 
