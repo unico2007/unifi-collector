@@ -22,18 +22,57 @@ type trafficDTO struct {
 	PerAp      []kv      `json:"perAp"`
 }
 
+// trafficTier picks the single device tier used for site-wide totals. Summing
+// every tier counts the same flow once per hop (gateway + switch + AP), which
+// inflates the chart by the topology depth. Prefer the gateway (true WAN
+// view); this site's gateway is a Kerio box outside UniFi, so fall back to
+// switches, then APs.
+func (s *Server) trafficTier(ctx context.Context) string {
+	rows, err := s.prom.query(ctx, `count by (type) (unifi_device_rx_bytes)`)
+	if err != nil {
+		return "uap"
+	}
+	have := map[string]bool{}
+	for _, r := range rows {
+		have[r.labels["type"]] = true
+	}
+	for _, t := range []string{"ugw", "usw", "uap"} {
+		if have[t] {
+			return t
+		}
+	}
+	return "uap"
+}
+
+// trafficQueries builds the PromQL for the site totals at one tier, mapping
+// download/upload onto the right counter direction: a gateway/switch receives
+// downloads on rx, but an AP *transmits* downloads to its clients, so at the
+// AP tier the directions swap.
+func trafficQueries(tier string) (downRate, upRate, downTotal, upTotal string) {
+	rx := fmt.Sprintf(`sum(rate(unifi_device_rx_bytes{type=%q}[5m]))`, tier)
+	tx := fmt.Sprintf(`sum(rate(unifi_device_tx_bytes{type=%q}[5m]))`, tier)
+	rxT := fmt.Sprintf(`sum(unifi_device_rx_bytes{type=%q})`, tier)
+	txT := fmt.Sprintf(`sum(unifi_device_tx_bytes{type=%q})`, tier)
+	if tier == "uap" {
+		return tx, rx, txT, rxT
+	}
+	return rx, tx, rxT, txT
+}
+
 func (s *Server) handleTraffic(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var d trafficDTO
 
-	// Throughput over the selected range (bytes/s -> Mbps).
+	// Throughput over the selected range (bytes/s -> Mbps), measured at a
+	// single device tier so multi-hop flows aren't double-counted.
 	dur, step := parseRange(r.URL.Query().Get("range"))
-	d.Rx = toMbps(mustSeries(s.prom.rangeSeries(ctx, `sum(rate(unifi_device_rx_bytes[5m]))`, dur, step)))
-	d.Tx = toMbps(mustSeries(s.prom.rangeSeries(ctx, `sum(rate(unifi_device_tx_bytes[5m]))`, dur, step)))
+	downRate, upRate, downTotal, upTotal := trafficQueries(s.trafficTier(ctx))
+	d.Rx = toMbps(mustSeries(s.prom.rangeSeries(ctx, downRate, dur, step)))
+	d.Tx = toMbps(mustSeries(s.prom.rangeSeries(ctx, upRate, dur, step)))
 
-	// Cumulative totals.
-	rxTotal, _ := s.prom.scalar(ctx, `sum(unifi_device_rx_bytes)`)
-	txTotal, _ := s.prom.scalar(ctx, `sum(unifi_device_tx_bytes)`)
+	// Cumulative totals (same tier and direction mapping as the chart).
+	rxTotal, _ := s.prom.scalar(ctx, downTotal)
+	txTotal, _ := s.prom.scalar(ctx, upTotal)
 	d.TotalRx = formatBytes(rxTotal)
 	d.TotalTx = formatBytes(txTotal)
 
