@@ -190,6 +190,7 @@ func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 	tx := s.byMAC(ctx, `unifi_client_tx_rate`)
 	conn := s.byMAC(ctx, `unifi_client_connected_seconds`)
 	names := s.apNames(ctx)
+	ips := s.clientIPs(ctx)
 
 	out := make([]clientDTO, 0, len(rssi))
 	for _, c := range rssi {
@@ -202,7 +203,7 @@ func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 			RSSI:  c.value,
 			Rx:    formatRate(rx[mac]),
 			Tx:    formatRate(tx[mac]),
-			IP:    "-",
+			IP:    ipOrDash(ips[mac]),
 			Since: formatUptime(conn[mac]),
 		})
 	}
@@ -221,6 +222,22 @@ func (s *Server) apNames(ctx context.Context) map[string]string {
 	for _, r := range rows {
 		if mac := r.labels["mac"]; mac != "" && r.labels["name"] != "" {
 			m[mac] = r.labels["name"]
+		}
+	}
+	return m
+}
+
+// clientIPs maps client MAC -> IP from the unifi_client_info metric (mirrors how
+// device IPs come from unifi_device_info).
+func (s *Server) clientIPs(ctx context.Context) map[string]string {
+	m := map[string]string{}
+	rows, err := s.prom.query(ctx, `unifi_client_info`)
+	if err != nil {
+		return m
+	}
+	for _, r := range rows {
+		if mac := r.labels["mac"]; mac != "" {
+			m[mac] = r.labels["ip"]
 		}
 	}
 	return m

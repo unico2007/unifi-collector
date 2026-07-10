@@ -24,6 +24,7 @@ var (
 	deviceInfoLabels  = []string{"vendor", "site", "mac", "name", "model", "type", "version", "state", "ip"}
 	devicesTotalLabel = []string{"vendor", "site", "type"}
 	clientLabels      = []string{"vendor", "site", "mac", "name", "ap", "vlan", "band"}
+	clientInfoLabels  = []string{"vendor", "site", "mac", "name", "ip"}
 	clientsTotalLabel = []string{"vendor", "site"}
 	healthLabels      = []string{"vendor", "site", "subsystem"}
 	scrapeLabels      = []string{"collector"}
@@ -49,6 +50,7 @@ type Metrics struct {
 	clientTxRate    *prometheus.GaugeVec
 	clientRxRate    *prometheus.GaugeVec
 	clientConnected *prometheus.GaugeVec
+	clientInfo      *prometheus.GaugeVec
 
 	// Health.
 	healthStatus  *prometheus.GaugeVec
@@ -88,6 +90,7 @@ func New(namespace string) *Metrics {
 		clientTxRate:    gauge("client", "tx_rate", "Client transmit rate in bits/s.", clientLabels),
 		clientRxRate:    gauge("client", "rx_rate", "Client receive rate in bits/s.", clientLabels),
 		clientConnected: gauge("client", "connected_seconds", "Client connected time in seconds.", clientLabels),
+		clientInfo:      gauge("client", "info", "Client metadata (carries ip); value is always 1.", clientInfoLabels),
 
 		healthStatus:  gauge("health", "status", "Subsystem status (1=ok, 0.5=warning, 0=error).", healthLabels),
 		healthDevices: gauge("health", "devices", "Devices per subsystem.", healthLabels),
@@ -114,7 +117,7 @@ func New(namespace string) *Metrics {
 	m.reg.MustRegister(
 		m.devicesTotal, m.deviceUp, m.deviceCPU, m.deviceMem, m.deviceUptime,
 		m.deviceRxBytes, m.deviceTxBytes, m.deviceInfo,
-		m.clientsTotal, m.clientRSSI, m.clientTxRate, m.clientRxRate, m.clientConnected,
+		m.clientsTotal, m.clientRSSI, m.clientTxRate, m.clientRxRate, m.clientConnected, m.clientInfo,
 		m.healthStatus, m.healthDevices, m.healthClients,
 		m.scrapeErrors, m.scrapeDuration, m.scrapeSuccess, m.scrapeLast,
 		collectors.NewGoCollector(),
@@ -170,6 +173,7 @@ func (m *Metrics) RecordClients(clients []models.Client) {
 	m.clientTxRate.Reset()
 	m.clientRxRate.Reset()
 	m.clientConnected.Reset()
+	m.clientInfo.Reset()
 
 	bySite := map[[2]string]int{}
 	for _, c := range clients {
@@ -178,6 +182,7 @@ func (m *Metrics) RecordClients(clients []models.Client) {
 		m.clientTxRate.WithLabelValues(lv...).Set(c.TxRate)
 		m.clientRxRate.WithLabelValues(lv...).Set(c.RxRate)
 		m.clientConnected.WithLabelValues(lv...).Set(c.ConnectedTime.Seconds())
+		m.clientInfo.WithLabelValues(c.Vendor, c.Site, c.MAC, c.Name, c.IP).Set(1)
 		bySite[[2]string{c.Vendor, c.Site}]++
 	}
 	for k, n := range bySite {
