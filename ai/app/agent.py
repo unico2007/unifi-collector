@@ -39,14 +39,19 @@ Given a user question, decide how to answer it.
 Pick ONE source:
 - "prometheus" — for live numbers/metrics/status (counts, CPU, memory, rssi, traffic).
 - "loki" — for actual log text/events right now.
-- "knowledge" — for how-to / why / "what does X mean" / troubleshooting steps /
-  network layout / procedures / documentation. No live number is needed; the answer
-  comes from the knowledge base. For "knowledge", put good search keywords in "query".
+- "knowledge" — for how-to / why / "what does X mean" / network layout / procedures /
+  documentation, when NO live data is needed. Put good search keywords in "query".
+- "troubleshoot" — when the user reports a PROBLEM and wants to diagnose/fix it
+  (something is broken / failing / not working / "why is X down"). This combines the
+  runbook (knowledge) WITH live logs. Put runbook search keywords in "query" AND a
+  targeted LogQL in "logql" (e.g. {{vendor="unifi"}} |= "keyword"); if unsure which
+  logs, set "logql" to {{vendor=~"unifi|kerio"}}.
 
 Rules:
 - For rates/traffic use rate(metric[5m]).
 - Keep any time range <= {'{'}max{'}'}.
-- Output STRICT JSON: {{"source":"prometheus"|"loki"|"knowledge","query":"...","reason":"..."}}
+- Output STRICT JSON: {{"source":"prometheus"|"loki"|"knowledge"|"troubleshoot","query":"...","logql":"...","reason":"..."}}
+  ("logql" only matters for "troubleshoot"; use "" otherwise.)
 - Do NOT invent metric or label names outside the schema.
 - Add a label filter ONLY when the user explicitly names that value (a specific
   device name, site, AP, or vendor). For general questions ("the network",
@@ -90,6 +95,16 @@ concise English, based ONLY on the "Knowledge" text below. The knowledge may be
 written in Azerbaijani — read it and answer in English. Do not invent anything not
 in it. If there is no relevant information, say so and suggest what to check. Number
 the steps if there are any. Cite the source at the end (e.g. source: runbooks.md)."""
+
+TROUBLESHOOT_SYSTEM = """You are the Unico network monitoring assistant helping to fix a
+problem. You get (a) runbook/knowledge text (may be in Azerbaijani) and (b) recent live
+log lines from the network. Answer in clear, concise English:
+1. First, one line on what the live logs currently show (or say the logs show nothing
+   relevant to this problem).
+2. Then the concrete fix steps from the runbook, numbered.
+Use ONLY the provided text — do not invent numbers, events or steps. Keep technical
+terms as-is (CPU, IP, MAC, offline, AP, VLAN, RSSI, uplink). Cite the runbook source
+at the end (e.g. source: runbooks.md)."""
 
 
 def _validate(source: str, query: str) -> str | None:
@@ -147,15 +162,46 @@ async def _answer_knowledge(question: str, refined: str) -> dict:
     }
 
 
+async def _answer_troubleshoot(question: str, keywords: str, logql: str) -> dict:
+    """Hybrid branch: combine RAG runbook steps with live log evidence so the answer
+    is grounded in BOTH the documented procedure and the current state."""
+    hits = [h for h in await kb.search(keywords or question) if h.score >= settings.rag_min_score]
+    knowledge = "\n\n".join(
+        f"[{h.chunk.source} › {h.chunk.section}]\n{h.chunk.text}" for h in hits
+    ) or "(uyğun runbook tapılmadı)"
+
+    # Use the planner's LogQL if it's valid, else a safe recent-logs default.
+    lq = logql if logql and _validate("loki", logql) is None else '{vendor=~"unifi|kerio"}'
+    try:
+        data = await loki.query_range(lq, limit=40)
+        logs = _summarize("loki", data)
+    except Exception as e:  # noqa: BLE001
+        logs = f"(log oxunmadı: {e})"
+
+    answer = await llm.generate(
+        f"Problem: {question}\n\nRunbook/Knowledge:\n{knowledge}\n\nRecent live logs:\n{logs}",
+        system=TROUBLESHOOT_SYSTEM,
+    )
+    sources = sorted({h.chunk.source for h in hits})
+    return {
+        "answer": answer.strip(), "source": "troubleshoot",
+        "query": lq, "result": logs, "sources": sources,
+    }
+
+
 async def chat(question: str) -> dict:
     # 1) plan / route the question
     plan = await llm.generate_json(f"Sual: {question}", system=PLANNER_SYSTEM)
     source = plan.get("source", "")
     query = plan.get("query", "")
 
-    # RAG branch: knowledge-base answer (how/why/troubleshooting/docs).
+    # RAG branch: knowledge-base answer (how/why/docs).
     if source == "knowledge":
         return await _answer_knowledge(question, query)
+
+    # Hybrid branch: runbook (RAG) + live logs for problem diagnosis.
+    if source == "troubleshoot":
+        return await _answer_troubleshoot(question, query, plan.get("logql", ""))
 
     err = _validate(source, query)
     if err:

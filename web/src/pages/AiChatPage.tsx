@@ -19,6 +19,7 @@ const sourceLabel: Record<string, string> = {
   prometheus: "Prometheus (metrik)",
   loki: "Loki (log)",
   knowledge: "Bilik bazası (RAG)",
+  troubleshoot: "Problem-həll (RAG + log)",
 };
 
 export default function AiChatPage() {
