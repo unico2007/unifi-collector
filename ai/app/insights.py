@@ -9,7 +9,6 @@ come from Prometheus, so nothing is fabricated.
 import statistics
 import time
 
-from .agent import AZ_STYLE
 from .clients import prom, llm
 
 # Severity ordering for sorting (lower = more urgent).
@@ -225,10 +224,10 @@ async def _summarize(insights: list[dict]) -> str:
     lines = "\n".join(f"- [{i['level']}] {i['title']}: {i['detail']}" for i in insights[:10])
     try:
         text = await llm.generate(
-            f"Şəbəkə monitorinq nəticələri:\n{lines}\n\n"
-            "Bunları 1-2 cümlədə Azərbaycanca ümumiləşdir: ən vacib nədir, nəyə diqqət etməli. "
-            "Rəqəm uydurma, yalnız verilənləri istifadə et.",
-            system=f"Sən Unico şəbəkə monitorinq köməkçisisən. Qısa, konkret, praktiki danış.\n{AZ_STYLE}",
+            f"Network monitoring findings (may be written in Azerbaijani):\n{lines}\n\n"
+            "Summarize these in 1-2 sentences of clear English: what matters most and "
+            "what to watch. Do not fabricate numbers; use only the given findings.",
+            system="You are the Unico network monitoring assistant. Be short, concrete and practical, in English.",
         )
         return text.strip()
     except Exception:  # noqa: BLE001

@@ -81,8 +81,8 @@ async def summary():
         return {"summary": f"Loglar oxunmadı: {e}"}
     text = agent._summarize("loki", data)
     answer = await llm.generate(
-        f"Son error logları:\n{text}\n\nBunları Azərbaycanca qısa xülasə et: neçə error, "
-        f"ən çox hansı, hansı cihaz/servis, tövsiyə.",
-        system=f"Sən Unico şəbəkə monitorinq köməkçisisən. Qısa, konkret xülasə ver.\n{agent.AZ_STYLE}",
+        f"Recent error logs:\n{text}\n\nSummarize briefly in English: how many errors, "
+        f"the most common one, which device/service, and a recommendation.",
+        system="You are the Unico network monitoring assistant. Give a short, concrete summary in English.",
     )
     return {"summary": answer.strip()}
