@@ -9,6 +9,7 @@ come from Prometheus, so nothing is fabricated.
 import statistics
 import time
 
+from .agent import AZ_STYLE
 from .clients import prom, llm
 
 # Severity ordering for sorting (lower = more urgent).
@@ -227,7 +228,7 @@ async def _summarize(insights: list[dict]) -> str:
             f"Şəbəkə monitorinq nəticələri:\n{lines}\n\n"
             "Bunları 1-2 cümlədə Azərbaycanca ümumiləşdir: ən vacib nədir, nəyə diqqət etməli. "
             "Rəqəm uydurma, yalnız verilənləri istifadə et.",
-            system="Sən şəbəkə monitorinq köməkçisisən. Qısa, konkret, praktiki danış.",
+            system=f"Sən Unico şəbəkə monitorinq köməkçisisən. Qısa, konkret, praktiki danış.\n{AZ_STYLE}",
         )
         return text.strip()
     except Exception:  # noqa: BLE001

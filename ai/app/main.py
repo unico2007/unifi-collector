@@ -83,6 +83,6 @@ async def summary():
     answer = await llm.generate(
         f"Son error logları:\n{text}\n\nBunları Azərbaycanca qısa xülasə et: neçə error, "
         f"ən çox hansı, hansı cihaz/servis, tövsiyə.",
-        system="Sən şəbəkə monitorinq köməkçisisən. Qısa, konkret xülasə ver.",
+        system=f"Sən Unico şəbəkə monitorinq köməkçisisən. Qısa, konkret xülasə ver.\n{agent.AZ_STYLE}",
     )
     return {"summary": answer.strip()}

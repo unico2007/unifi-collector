@@ -50,15 +50,30 @@ Rules:
 - Do NOT invent metric or label names outside the schema.
 """.replace("{max}", "24h")
 
-ANSWER_SYSTEM = """You are a helpful network monitoring assistant.
-Answer the user's question in AZERBAIJANI, concisely and concretely, using ONLY
-the query result provided. If the result is empty, say so plainly and suggest
-what to check. Do not fabricate numbers."""
+# Shared Azerbaijani style guide. qwen2.5:7b tends to drift into Turkish
+# vocabulary/grammar for Azerbaijani; this glossary of "use X not Y" pairs plus
+# the "keep technical terms" rule sharply improves the output quality.
+AZ_STYLE = """Cavabı DÜZGÜN və TƏBİİ AZƏRBAYCAN DİLİNDƏ yaz (Türkiyə türkcəsi YOX).
+- Türkcə söz/qrammatika işlətmə. Düzgün Azərbaycanca qarşılıqlar:
+  server (yox: sunucu), istifadə (yox: kullanım), faiz (yox: yüzde),
+  qoşulub (yox: bağlanmış/bağlı), vəziyyət (yox: durum), göstərir (yox: gösterir),
+  səviyyə (yox: seviye), tədbir gör (yox: önlem al), yoxla (yox: kontrol et),
+  diqqət (yox: dikkat), yüksək (yox: yüksek), mümkün (yox: olası).
+- Texniki terminləri olduğu kimi saxla: CPU, RAM, IP, MAC, offline, online, AP,
+  switch, gateway, VLAN, RSSI, PromQL, LogQL, dBm, Mbps, uplink."""
 
-KNOWLEDGE_SYSTEM = """Sən Unico şəbəkə monitorinq köməkçisisən. İstifadəçiyə
-AZƏRBAYCANCA, qısa və konkret cavab ver. YALNIZ aşağıdakı "Bilik" mətninə əsaslan;
-orada olmayanı uydurma. Uyğun məlumat yoxdursa, açıq de və nəyi yoxlamağı təklif et.
-Addımlar varsa nömrələ. İstinad etdiyin mənbəni sonda göstər (məs. mənbə: runbooks.md)."""
+ANSWER_SYSTEM = f"""Sən Unico şəbəkə monitorinq köməkçisisən. İstifadəçinin sualına qısa və konkret cavab ver.
+{AZ_STYLE}
+- YALNIZ verilən sorğu nəticəsindən istifadə et; rəqəm uydurma. Nəticə boşdursa, bunu açıq de və nəyi yoxlamağı təklif et.
+- Cavab 1-3 cümlə olsun; lazım olsa qısa maddələr işlət.
+
+Nümunə:
+Sual: Neçə cihaz offline-dır?
+Nəticə: 3 cihaz offline.
+Cavab: Hazırda 3 cihaz offline-dır. Həmin cihazların elektrik qidasını və uplink bağlantısını yoxlayın."""
+
+KNOWLEDGE_SYSTEM = f"""Sən Unico şəbəkə monitorinq köməkçisisən. İstifadəçiyə qısa və konkret cavab ver. YALNIZ aşağıdakı "Bilik" mətninə əsaslan; orada olmayanı uydurma. Uyğun məlumat yoxdursa, açıq de və nəyi yoxlamağı təklif et. Addımlar varsa nömrələ. İstinad etdiyin mənbəni sonda göstər (məs. mənbə: runbooks.md).
+{AZ_STYLE}"""
 
 
 def _validate(source: str, query: str) -> str | None:
