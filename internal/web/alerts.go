@@ -83,11 +83,28 @@ func (s *Server) handleAlertSettings(w http.ResponseWriter, _ *http.Request) {
 }
 
 // handleAlertSettingsUpdate persists new thresholds (admin-only; gated by the
-// route wrapper). Values out of 1..100 fall back to the previous defaults.
+// route wrapper). Patch semantics: an omitted field keeps its stored value —
+// decoding it into a plain struct would zero it and silently revert the
+// admin's setting to the default. Out-of-range values are rejected, not
+// silently clamped, so a typo (150 for 15) gets feedback instead of a 200.
 func (s *Server) handleAlertSettingsUpdate(w http.ResponseWriter, r *http.Request) {
-	var th thresholds
-	if err := json.NewDecoder(r.Body).Decode(&th); err != nil {
+	var patch struct {
+		CPU    *float64 `json:"cpuPercent"`
+		Memory *float64 `json:"memoryPercent"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad request"})
+		return
+	}
+	th := s.astore.thresholds()
+	if patch.CPU != nil {
+		th.CPU = *patch.CPU
+	}
+	if patch.Memory != nil {
+		th.Memory = *patch.Memory
+	}
+	if th.CPU < 1 || th.CPU > 100 || th.Memory < 1 || th.Memory > 100 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "thresholds must be between 1 and 100"})
 		return
 	}
 	if err := s.astore.setThresholds(th); err != nil {
