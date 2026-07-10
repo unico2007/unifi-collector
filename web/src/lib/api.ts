@@ -242,6 +242,11 @@ export const api = {
       return "Son 24 saatda 2 error, 3 xəbərdarlıq qeydə alınıb. Ən çox WAN gecikməsi ilə bağlıdır (demo).";
     }
   },
+  reindexKnowledge: async (): Promise<{ ready: boolean; chunks: number; error?: string | null }> => {
+    const r = await fetch("/api/ai/knowledge/reindex", { method: "POST", credentials: "include" });
+    if (!r.ok) throw new Error(String(r.status));
+    return (await r.json()) as { ready: boolean; chunks: number; error?: string | null };
+  },
 };
 
 // Canned answers so the AI page is demonstrable without the live service.

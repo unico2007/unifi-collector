@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, AiChat } from "../lib/api";
+import { useAuth } from "../lib/auth";
 
 interface Msg {
   role: "user" | "ai";
@@ -23,11 +24,28 @@ const sourceLabel: Record<string, string> = {
 };
 
 export default function AiChatPage() {
+  const { user } = useAuth();
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
+  const [reindexing, setReindexing] = useState(false);
+  const [reindexMsg, setReindexMsg] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+
+  async function reindex() {
+    if (reindexing) return;
+    setReindexing(true);
+    setReindexMsg(null);
+    try {
+      const r = await api.reindexKnowledge();
+      setReindexMsg(r.ready ? `Yeniləndi — ${r.chunks} hissə` : `Xəta: ${r.error ?? "alınmadı"}`);
+    } catch {
+      setReindexMsg("Yeniləmə alınmadı (AI servisini yoxlayın).");
+    } finally {
+      setReindexing(false);
+    }
+  }
 
   useEffect(() => {
     api.aiSummary().then(setSummary);
@@ -58,6 +76,21 @@ export default function AiChatPage() {
 
   return (
     <div className="flex flex-col h-full max-w-3xl mx-auto">
+      {/* Admin: rebuild the RAG knowledge base (re-reads docs + live inventory). */}
+      {user?.role === "admin" && (
+        <div className="flex items-center justify-end gap-2 mb-3">
+          {reindexMsg && <span className="text-xs text-muted">{reindexMsg}</span>}
+          <button
+            onClick={reindex}
+            disabled={reindexing}
+            className="btn text-xs"
+            title="Bilik bazasını (RAG) yenidən qur — sənədləri və canlı inventarı təzələyir"
+          >
+            {reindexing ? "Yenilənir..." : "Bilik bazasını yenilə"}
+          </button>
+        </div>
+      )}
+
       {/* Daily summary banner */}
       {summary && (
         <div className="card p-4 mb-4 bg-brand-50/40 border-brand-100">
