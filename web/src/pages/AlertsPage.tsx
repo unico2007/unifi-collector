@@ -125,7 +125,7 @@ export default function AlertsPage() {
         </div>
       </div>
 
-      <NotifyStatus enabled={d.telegramEnabled} isAdmin={user?.role === "admin"} />
+      <NotifyStatus enabled={d.telegramEnabled} criticalRouting={d.telegramCriticalRouting} isAdmin={user?.role === "admin"} />
 
       <p className="text-xs text-muted">
         Qaydalar hər açılışda Prometheus-dan canlı qiymətləndirilir; tarixçə fonda hər 30 saniyədə yazılır.
@@ -135,7 +135,7 @@ export default function AlertsPage() {
   );
 }
 
-function NotifyStatus({ enabled, isAdmin }: { enabled: boolean; isAdmin: boolean }) {
+function NotifyStatus({ enabled, criticalRouting, isAdmin }: { enabled: boolean; criticalRouting: boolean; isAdmin: boolean }) {
   const [state, setState] = useState<"idle" | "sending" | "sent" | "fail">("idle");
 
   async function test() {
@@ -158,10 +158,15 @@ function NotifyStatus({ enabled, isAdmin }: { enabled: boolean; isAdmin: boolean
         <div className="text-sm font-medium">Telegram bildirişləri</div>
         <div className="text-xs text-muted">
           {enabled
-            ? "Aktiv — yeni alertlər avtomatik Telegram-a göndərilir"
+            ? criticalRouting
+              ? "Aktiv — kritik alertlər ayrı chat-a, xəbərdarlıqlar əsas chat-a göndərilir"
+              : "Aktiv — yeni alertlər avtomatik Telegram-a göndərilir"
             : "Deaktiv — serverin .env-inə WEB_TELEGRAM_TOKEN + WEB_TELEGRAM_CHAT_ID əlavə edin"}
         </div>
       </div>
+      {enabled && criticalRouting && (
+        <span className="pill bg-red-50 text-red-700">kritik → ayrı chat</span>
+      )}
       <span className={`ml-auto pill ${enabled ? "bg-green-50 text-green-700" : "bg-slate-100 text-slate-600"}`}>
         {enabled ? "aktiv" : "deaktiv"}
       </span>

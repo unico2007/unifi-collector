@@ -40,6 +40,7 @@ func run() error {
 		dbPath     = flag.String("db", env("WEB_DB", "data/users.db"), "SQLite user database path")
 		tgToken    = flag.String("telegram-token", env("WEB_TELEGRAM_TOKEN", ""), "Telegram bot token for alert notifications (optional)")
 		tgChat     = flag.String("telegram-chat", env("WEB_TELEGRAM_CHAT_ID", ""), "Telegram chat id to notify (optional)")
+		tgCritChat = flag.String("telegram-critical-chat", env("WEB_TELEGRAM_CRITICAL_CHAT_ID", ""), "Telegram chat id for critical alerts (optional; falls back to -telegram-chat)")
 		createUser = flag.Bool("create-user", false, "create/update a user, then exit")
 		username   = flag.String("user", "", "username (with -create-user)")
 		password   = flag.String("pass", "", "password (with -create-user)")
@@ -71,15 +72,16 @@ func run() error {
 	log.Info("unico bff starting", zap.String("version", version))
 
 	srv, err := web.New(web.Config{
-		Addr:           *addr,
-		StaticDir:      *staticDir,
-		PrometheusURL:  *promURL,
-		LokiURL:        *lokiURL,
-		AIURL:          *aiURL,
-		TelegramToken:  *tgToken,
-		TelegramChatID: *tgChat,
-		ReadTimeout:    15 * time.Second,
-		WriteTimeout:   30 * time.Second,
+		Addr:                   *addr,
+		StaticDir:              *staticDir,
+		PrometheusURL:          *promURL,
+		LokiURL:                *lokiURL,
+		AIURL:                  *aiURL,
+		TelegramToken:          *tgToken,
+		TelegramChatID:         *tgChat,
+		TelegramCriticalChatID: *tgCritChat,
+		ReadTimeout:            15 * time.Second,
+		WriteTimeout:           30 * time.Second,
 	}, users, log)
 	if err != nil {
 		return err

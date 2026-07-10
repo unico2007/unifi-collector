@@ -17,15 +17,16 @@ import (
 
 // Config configures the BFF server.
 type Config struct {
-	Addr           string // listen address, e.g. ":8080"
-	StaticDir      string // path to the built frontend (web/dist)
-	PrometheusURL  string // e.g. http://prometheus:9090
-	LokiURL        string // e.g. http://loki:3100
-	AIURL          string // e.g. http://ai:8090
-	TelegramToken  string // optional: Telegram bot token for alert notifications
-	TelegramChatID string // optional: Telegram chat id to notify
-	ReadTimeout    time.Duration
-	WriteTimeout   time.Duration
+	Addr                   string // listen address, e.g. ":8080"
+	StaticDir              string // path to the built frontend (web/dist)
+	PrometheusURL          string // e.g. http://prometheus:9090
+	LokiURL                string // e.g. http://loki:3100
+	AIURL                  string // e.g. http://ai:8090
+	TelegramToken          string // optional: Telegram bot token for alert notifications
+	TelegramChatID         string // optional: Telegram chat id to notify
+	TelegramCriticalChatID string // optional: route critical alerts to this chat instead
+	ReadTimeout            time.Duration
+	WriteTimeout           time.Duration
 }
 
 // Server is the BFF. It owns the user store, sessions, and upstream clients.
@@ -56,7 +57,7 @@ func New(cfg Config, users *userStore, log *zap.Logger) (*Server, error) {
 		signer:   newSigner(users.secret),
 		prom:     newPromClient(cfg.PrometheusURL),
 		loki:     newLokiClient(cfg.LokiURL),
-		notifier: newNotifier(cfg.TelegramToken, cfg.TelegramChatID),
+		notifier: newNotifier(cfg.TelegramToken, cfg.TelegramChatID, cfg.TelegramCriticalChatID),
 	}
 
 	if cfg.AIURL != "" {

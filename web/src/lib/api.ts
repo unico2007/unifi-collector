@@ -138,6 +138,7 @@ export interface AlertsData {
   rules: { name: string; condition: string; level: string }[];
   thresholds: AlertThresholds;
   telegramEnabled: boolean;
+  telegramCriticalRouting: boolean;
 }
 
 export interface TopoNode {
@@ -474,6 +475,7 @@ const mockAlerts: AlertsData = {
   ],
   thresholds: { cpuPercent: 85, memoryPercent: 90 },
   telegramEnabled: false,
+  telegramCriticalRouting: false,
 };
 
 const now = Math.floor(Date.now() / 1000);

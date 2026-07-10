@@ -30,9 +30,10 @@ type alertsDTO struct {
 		Critical int `json:"critical"`
 		Warning  int `json:"warning"`
 	} `json:"counts"`
-	Rules           []ruleDTO  `json:"rules"`
-	Thresholds      thresholds `json:"thresholds"`
-	TelegramEnabled bool       `json:"telegramEnabled"`
+	Rules                   []ruleDTO  `json:"rules"`
+	Thresholds              thresholds `json:"thresholds"`
+	TelegramEnabled         bool       `json:"telegramEnabled"`
+	TelegramCriticalRouting bool       `json:"telegramCriticalRouting"`
 }
 
 // rulesFor builds the rule list for the given thresholds. Rules are evaluated
@@ -56,6 +57,7 @@ func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
 	out.Rules = rulesFor(th)
 	out.Thresholds = th
 	out.TelegramEnabled = s.notifier.enabled()
+	out.TelegramCriticalRouting = s.notifier.criticalRouting()
 
 	for _, a := range out.Active {
 		switch a.Level {
