@@ -2,7 +2,6 @@ package web
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httputil"
@@ -13,6 +12,9 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+
+	"github.com/murad/unifi-collector/internal/web/query"
+	"github.com/murad/unifi-collector/internal/web/respond"
 )
 
 // Config configures the BFF server.
@@ -37,8 +39,8 @@ type Server struct {
 	users    *userStore
 	astore   *alertStore
 	signer   *signer
-	prom     *promClient
-	loki     *lokiClient
+	prom     *query.Prometheus
+	loki     *query.Loki
 	notifier *notifier
 	aiProxy  *httputil.ReverseProxy
 }
@@ -55,8 +57,8 @@ func New(cfg Config, users *userStore, log *zap.Logger) (*Server, error) {
 		users:    users,
 		astore:   astore,
 		signer:   newSigner(users.secret),
-		prom:     newPromClient(cfg.PrometheusURL),
-		loki:     newLokiClient(cfg.LokiURL),
+		prom:     query.NewPrometheus(cfg.PrometheusURL),
+		loki:     query.NewLoki(cfg.LokiURL),
 		notifier: newNotifier(cfg.TelegramToken, cfg.TelegramChatID, cfg.TelegramCriticalChatID),
 	}
 
@@ -119,11 +121,11 @@ func (s *Server) handleAIProxy(w http.ResponseWriter, r *http.Request) {
 // index.html so client-side routing works on refresh/deep-link.
 func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(r.URL.Path, "/api/") {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		respond.JSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
 	}
 	if s.cfg.StaticDir == "" {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "unico BFF: frontend not bundled"})
+		respond.JSON(w, http.StatusOK, map[string]string{"status": "unico BFF: frontend not bundled"})
 		return
 	}
 	clean := filepath.Clean(r.URL.Path)
@@ -148,7 +150,7 @@ func (s *Server) runAlertEvaluator(ctx context.Context) {
 		// Guard: if Prometheus is unreachable, activeAlerts() returns empty and we
 		// would wrongly resolve every open alert (then re-fire on recovery). Skip
 		// the tick instead so the history stays clean during a Prometheus blip.
-		if _, err := s.prom.scalar(ectx, "vector(1)"); err != nil {
+		if _, err := s.prom.Scalar(ectx, "vector(1)"); err != nil {
 			return
 		}
 		active := s.activeAlerts(ectx, s.astore.thresholds())
@@ -205,10 +207,4 @@ func (s *Server) Run(ctx context.Context) error {
 		s.log.Info("bff shutting down")
 		return s.http.Shutdown(shutdownCtx)
 	}
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
 }

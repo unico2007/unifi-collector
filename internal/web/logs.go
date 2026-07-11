@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/murad/unifi-collector/internal/web/respond"
 )
 
 type pill struct {
@@ -32,13 +34,13 @@ func (s *Server) handleLogsCategories(w http.ResponseWriter, r *http.Request) {
 	if out == nil {
 		out = []logCategoryDTO{}
 	}
-	writeJSON(w, http.StatusOK, out)
+	respond.JSON(w, http.StatusOK, out)
 }
 
 // unifiCategories reads recent UniFi logs from Loki, parses their CEF payload and
 // groups them by CEF event name.
 func (s *Server) unifiCategories(ctx context.Context) []logCategoryDTO {
-	lines := s.loki.recent(ctx, `{vendor="unifi"}`, 24*time.Hour, 800)
+	lines := s.loki.Recent(ctx, `{vendor="unifi"}`, 24*time.Hour, 800)
 
 	cols := []string{"Vaxt", "Səviyyə", "Cihaz", "Detal"}
 	order := []string{}
@@ -87,7 +89,7 @@ func (s *Server) unifiCategories(ctx context.Context) []logCategoryDTO {
 // firewall rule (the parsed [Rule] name / quoted rule). Each row shows the verdict
 // (blok/icazə), the source IP and the raw detail line.
 func (s *Server) kerioCategories(ctx context.Context) []logCategoryDTO {
-	lines := s.loki.recent(ctx, `{vendor="kerio"}`, 24*time.Hour, 1500)
+	lines := s.loki.Recent(ctx, `{vendor="kerio"}`, 24*time.Hour, 1500)
 
 	cols := []string{"Vaxt", "Əməl", "Mənbə", "Təsvir", "Detal"}
 	order := []string{}

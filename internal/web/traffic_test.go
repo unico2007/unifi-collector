@@ -8,11 +8,13 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/murad/unifi-collector/internal/web/query"
 )
 
 // stubProm serves a Prometheus instant-query API returning one series per
 // given device type, so trafficTier can be exercised end-to-end.
-func stubProm(t *testing.T, types []string) *promClient {
+func stubProm(t *testing.T, types []string) *query.Prometheus {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		results := make([]map[string]any, 0, len(types))
@@ -28,7 +30,7 @@ func stubProm(t *testing.T, types []string) *promClient {
 		})
 	}))
 	t.Cleanup(srv.Close)
-	return newPromClient(srv.URL)
+	return query.NewPrometheus(srv.URL)
 }
 
 func TestTrafficTier(t *testing.T) {
@@ -50,7 +52,7 @@ func TestTrafficTier(t *testing.T) {
 }
 
 func TestTrafficTierPromDown(t *testing.T) {
-	s := &Server{prom: newPromClient("http://127.0.0.1:1")} // nothing listens
+	s := &Server{prom: query.NewPrometheus("http://127.0.0.1:1")} // nothing listens
 	if got := s.trafficTier(context.Background()); got != "uap" {
 		t.Errorf("prom unreachable: tier = %q, want uap fallback", got)
 	}

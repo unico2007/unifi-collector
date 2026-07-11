@@ -3,6 +3,8 @@ package web
 import (
 	"net/http"
 	"sort"
+
+	"github.com/murad/unifi-collector/internal/web/respond"
 )
 
 type topoNode struct {
@@ -42,25 +44,25 @@ func (s *Server) handleTopology(w http.ResponseWriter, r *http.Request) {
 
 	// Clients grouped under their AP (ap label is a MAC → resolve to name).
 	names := s.apNames(ctx)
-	if rows, err := s.prom.query(ctx, `unifi_client_rssi`); err == nil {
+	if rows, err := s.prom.Query(ctx, `unifi_client_rssi`); err == nil {
 		for _, c := range rows {
-			ap := apLabel(names, c.labels["ap"])
+			ap := apLabel(names, c.Labels["ap"])
 			out.ClientsByAp[ap] = append(out.ClientsByAp[ap], topoClient{
-				Name: c.labels["name"], MAC: c.labels["mac"], RSSI: c.value,
+				Name: c.Labels["name"], MAC: c.Labels["mac"], RSSI: c.Value,
 			})
 			out.Stats.Clients++
 		}
 	}
 
-	infos, err := s.prom.query(ctx, `unifi_device_info`)
+	infos, err := s.prom.Query(ctx, `unifi_device_info`)
 	if err != nil {
-		writeJSON(w, http.StatusOK, out)
+		respond.JSON(w, http.StatusOK, out)
 		return
 	}
 	for _, in := range infos {
 		n := topoNode{
-			Name: in.labels["name"], Type: in.labels["type"], Vendor: in.labels["vendor"],
-			Model: in.labels["model"], IP: ipOrDash(in.labels["ip"]), State: in.labels["state"],
+			Name: in.Labels["name"], Type: in.Labels["type"], Vendor: in.Labels["vendor"],
+			Model: in.Labels["model"], IP: ipOrDash(in.Labels["ip"]), State: in.Labels["state"],
 		}
 		switch {
 		case n.Vendor == "kerio" || n.Type == "ugw" || n.Type == "interface":
@@ -82,5 +84,5 @@ func (s *Server) handleTopology(w http.ResponseWriter, r *http.Request) {
 	sort.SliceStable(out.Switches, func(i, j int) bool { return byName(out.Switches[i], out.Switches[j]) })
 	sort.SliceStable(out.APs, func(i, j int) bool { return out.APs[i].Clients > out.APs[j].Clients })
 
-	writeJSON(w, http.StatusOK, out)
+	respond.JSON(w, http.StatusOK, out)
 }

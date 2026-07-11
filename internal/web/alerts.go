@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strconv"
 	"time"
+
+	"github.com/murad/unifi-collector/internal/web/respond"
 )
 
 type alertDTO struct {
@@ -68,18 +70,18 @@ func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, http.StatusOK, out)
+	respond.JSON(w, http.StatusOK, out)
 }
 
 // handleAlertHistory returns the recent fire/resolve timeline, newest first.
 func (s *Server) handleAlertHistory(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	writeJSON(w, http.StatusOK, s.astore.history(limit))
+	respond.JSON(w, http.StatusOK, s.astore.history(limit))
 }
 
 // handleAlertSettings returns the current configurable thresholds.
 func (s *Server) handleAlertSettings(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, s.astore.thresholds())
+	respond.JSON(w, http.StatusOK, s.astore.thresholds())
 }
 
 // handleAlertSettingsUpdate persists new thresholds (admin-only; gated by the
@@ -93,7 +95,7 @@ func (s *Server) handleAlertSettingsUpdate(w http.ResponseWriter, r *http.Reques
 		Memory *float64 `json:"memoryPercent"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad request"})
+		respond.JSON(w, http.StatusBadRequest, map[string]string{"error": "bad request"})
 		return
 	}
 	th := s.astore.thresholds()
@@ -104,30 +106,30 @@ func (s *Server) handleAlertSettingsUpdate(w http.ResponseWriter, r *http.Reques
 		th.Memory = *patch.Memory
 	}
 	if th.CPU < 1 || th.CPU > 100 || th.Memory < 1 || th.Memory > 100 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "thresholds must be between 1 and 100"})
+		respond.JSON(w, http.StatusBadRequest, map[string]string{"error": "thresholds must be between 1 and 100"})
 		return
 	}
 	if err := s.astore.setThresholds(th); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "save failed"})
+		respond.JSON(w, http.StatusInternalServerError, map[string]string{"error": "save failed"})
 		return
 	}
-	writeJSON(w, http.StatusOK, s.astore.thresholds())
+	respond.JSON(w, http.StatusOK, s.astore.thresholds())
 }
 
 // handleTestNotify sends a test Telegram message so an admin can verify the
 // bot token + chat id are correct (admin-only; gated by the route wrapper).
 func (s *Server) handleTestNotify(w http.ResponseWriter, r *http.Request) {
 	if !s.notifier.enabled() {
-		writeJSON(w, http.StatusOK, map[string]any{"enabled": false})
+		respond.JSON(w, http.StatusOK, map[string]any{"enabled": false})
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	if err := s.notifier.send(ctx, "✅ Unico test bildirişi — Telegram inteqrasiyası işləyir."); err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]any{"enabled": true, "error": err.Error()})
+		respond.JSON(w, http.StatusBadGateway, map[string]any{"enabled": true, "error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"enabled": true, "sent": true})
+	respond.JSON(w, http.StatusOK, map[string]any{"enabled": true, "sent": true})
 }
 
 // activeAlerts evaluates every rule live against Prometheus and returns the
@@ -177,16 +179,16 @@ func (s *Server) activeAlerts(ctx context.Context, th thresholds) []alertDTO {
 // alertDevices runs a threshold query and builds one alert per matching series.
 func (s *Server) alertDevices(ctx context.Context, expr, level, rule string,
 	build func(labels map[string]string, value float64) (msg, val string)) []alertDTO {
-	rows, err := s.prom.query(ctx, expr)
+	rows, err := s.prom.Query(ctx, expr)
 	if err != nil {
 		return nil
 	}
 	out := make([]alertDTO, 0, len(rows))
 	for _, row := range rows {
-		msg, val := build(row.labels, row.value)
-		target := devName(row.labels)
-		if row.labels["subsystem"] != "" {
-			target = row.labels["subsystem"]
+		msg, val := build(row.Labels, row.Value)
+		target := devName(row.Labels)
+		if row.Labels["subsystem"] != "" {
+			target = row.Labels["subsystem"]
 		}
 		out = append(out, alertDTO{Level: level, Rule: rule, Target: target, Message: msg, Value: val})
 	}

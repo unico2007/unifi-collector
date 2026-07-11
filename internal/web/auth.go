@@ -17,6 +17,8 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite" // pure-Go driver: works with CGO_ENABLED=0
+
+	"github.com/murad/unifi-collector/internal/web/respond"
 )
 
 const (
@@ -194,12 +196,12 @@ type userResp struct {
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var req loginReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad request"})
+		respond.JSON(w, http.StatusBadRequest, map[string]string{"error": "bad request"})
 		return
 	}
 	role, ok := s.users.verify(req.Username, req.Password)
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "İstifadəçi adı və ya parol yanlışdır"})
+		respond.JSON(w, http.StatusUnauthorized, map[string]string{"error": "İstifadəçi adı və ya parol yanlışdır"})
 		return
 	}
 	http.SetCookie(w, &http.Cookie{
@@ -210,21 +212,21 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Now().Add(sessionTTL),
 	})
-	writeJSON(w, http.StatusOK, userResp{Username: req.Username, Role: role})
+	respond.JSON(w, http.StatusOK, userResp{Username: req.Username, Role: role})
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, _ *http.Request) {
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1})
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	respond.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	sess, ok := s.currentSession(r)
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		respond.JSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
-	writeJSON(w, http.StatusOK, userResp{Username: sess.username, Role: sess.role})
+	respond.JSON(w, http.StatusOK, userResp{Username: sess.username, Role: sess.role})
 }
 
 func (s *Server) currentSession(r *http.Request) (session, bool) {
@@ -239,7 +241,7 @@ func (s *Server) currentSession(r *http.Request) (session, bool) {
 func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := s.currentSession(r); !ok {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+			respond.JSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 			return
 		}
 		next(w, r)
@@ -252,11 +254,11 @@ func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := s.currentSession(r)
 		if !ok {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+			respond.JSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 			return
 		}
 		if sess.role != "admin" {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "yalnız admin"})
+			respond.JSON(w, http.StatusForbidden, map[string]string{"error": "yalnız admin"})
 			return
 		}
 		next(w, r)
