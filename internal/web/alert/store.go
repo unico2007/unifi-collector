@@ -1,14 +1,19 @@
-package web
+// Package alert is the BFF's alerting feature: the SQLite-backed threshold and
+// history store, the live rule evaluation, the Telegram notifier, the HTTP
+// handlers, and the background evaluator that records fire/resolve transitions.
+package alert
 
 import (
 	"database/sql"
 	"time"
+
+	_ "modernc.org/sqlite" // pure-Go driver; also registered by the auth store
 )
 
-// alertStore persists user-configurable alert thresholds and an alert-history
+// Store persists user-configurable alert thresholds and an alert-history
 // timeline. It reuses the same SQLite database as the user store (on the
 // web-data volume), so settings + history survive restarts/redeploys.
-type alertStore struct {
+type Store struct {
 	db *sql.DB
 }
 
@@ -32,7 +37,8 @@ type historyRow struct {
 	ResolvedAt int64  `json:"resolvedAt"`
 }
 
-func newAlertStore(db *sql.DB) (*alertStore, error) {
+// NewStore creates the alert tables on the given (shared) database handle.
+func NewStore(db *sql.DB) (*Store, error) {
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS alert_settings (k TEXT PRIMARY KEY, v REAL NOT NULL)`); err != nil {
 		return nil, err
 	}
@@ -52,7 +58,7 @@ func newAlertStore(db *sql.DB) (*alertStore, error) {
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_alert_history_open ON alert_history (resolved_at)`); err != nil {
 		return nil, err
 	}
-	s := &alertStore{db: db}
+	s := &Store{db: db}
 	// Seed defaults once (INSERT OR IGNORE keeps user edits).
 	for k, v := range map[string]float64{"cpu_percent": defaultThresholds.CPU, "memory_percent": defaultThresholds.Memory} {
 		if _, err := db.Exec(`INSERT OR IGNORE INTO alert_settings (k, v) VALUES (?, ?)`, k, v); err != nil {
@@ -63,7 +69,7 @@ func newAlertStore(db *sql.DB) (*alertStore, error) {
 }
 
 // thresholds returns the current limits, falling back to defaults on any error.
-func (s *alertStore) thresholds() thresholds {
+func (s *Store) thresholds() thresholds {
 	th := defaultThresholds
 	rows, err := s.db.Query(`SELECT k, v FROM alert_settings`)
 	if err != nil {
@@ -87,7 +93,7 @@ func (s *alertStore) thresholds() thresholds {
 }
 
 // setThresholds persists new limits (clamped to a sane 1..100 range).
-func (s *alertStore) setThresholds(th thresholds) error {
+func (s *Store) setThresholds(th thresholds) error {
 	clamp := func(v, def float64) float64 {
 		if v < 1 || v > 100 {
 			return def
@@ -106,7 +112,7 @@ func (s *alertStore) setThresholds(th thresholds) error {
 // longer active are marked resolved. Called on a timer so the timeline reflects
 // real fire/resolve events even when nobody is viewing the page. It returns the
 // alerts that fired and resolved on this tick so the caller can notify.
-func (s *alertStore) recordTransitions(active []alertDTO) (fired, resolved []alertDTO, err error) {
+func (s *Store) recordTransitions(active []alertDTO) (fired, resolved []alertDTO, err error) {
 	now := time.Now().Unix()
 	current := make(map[string]alertDTO, len(active))
 	for _, a := range active {
@@ -159,7 +165,7 @@ func (s *alertStore) recordTransitions(active []alertDTO) (fired, resolved []ale
 
 // history returns the most recent alert spans (active first via NULL resolved_at
 // sorting high, then newest fired first).
-func (s *alertStore) history(limit int) []historyRow {
+func (s *Store) history(limit int) []historyRow {
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}

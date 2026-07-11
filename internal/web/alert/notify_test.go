@@ -1,4 +1,4 @@
-package web
+package alert
 
 import "testing"
 
@@ -29,7 +29,7 @@ func TestNotifierChatRouting(t *testing.T) {
 	t.Run("critical chat routes only critical", func(t *testing.T) {
 		n := newNotifier("tok", "100", "999")
 		if !n.criticalRouting() {
-			t.Fatal("criticalRouting should be true when a critical chat is set")
+			t.Fatal("criticalRouting should be true")
 		}
 		if got := n.chatFor("critical"); got != "999" {
 			t.Fatalf("critical should route to critical chat, got %q", got)
@@ -40,10 +40,10 @@ func TestNotifierChatRouting(t *testing.T) {
 	})
 
 	t.Run("missing token or default chat disables", func(t *testing.T) {
-		if newNotifier("", "100", "999") != nil {
+		if newNotifier("", "100", "") != nil {
 			t.Fatal("missing token must disable")
 		}
-		if newNotifier("tok", "", "999") != nil {
+		if newNotifier("tok", "", "") != nil {
 			t.Fatal("missing default chat must disable")
 		}
 	})

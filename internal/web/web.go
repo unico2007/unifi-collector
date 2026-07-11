@@ -13,6 +13,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/murad/unifi-collector/internal/web/alert"
 	"github.com/murad/unifi-collector/internal/web/auth"
 	"github.com/murad/unifi-collector/internal/web/query"
 	"github.com/murad/unifi-collector/internal/web/respond"
@@ -34,31 +35,33 @@ type Config struct {
 
 // Server is the BFF. It owns the user store, sessions, and upstream clients.
 type Server struct {
-	cfg      Config
-	log      *zap.Logger
-	http     *http.Server
-	authn    *auth.Service
-	astore   *alertStore
-	prom     *query.Prometheus
-	loki     *query.Loki
-	notifier *notifier
-	aiProxy  *httputil.ReverseProxy
+	cfg     Config
+	log     *zap.Logger
+	http    *http.Server
+	authn   *auth.Service
+	alerts  *alert.Service
+	eval    *alert.Evaluator
+	prom    *query.Prometheus
+	loki    *query.Loki
+	aiProxy *httputil.ReverseProxy
 }
 
 // New wires the server. The caller owns the auth.Store lifecycle via Close.
 func New(cfg Config, users *auth.Store, log *zap.Logger) (*Server, error) {
-	astore, err := newAlertStore(users.DB())
+	astore, err := alert.NewStore(users.DB())
 	if err != nil {
 		return nil, err
 	}
+	prom := query.NewPrometheus(cfg.PrometheusURL)
+	alerts := alert.NewService(prom, astore, cfg.TelegramToken, cfg.TelegramChatID, cfg.TelegramCriticalChatID)
 	s := &Server{
-		cfg:      cfg,
-		log:      log,
-		authn:    auth.NewService(users),
-		astore:   astore,
-		prom:     query.NewPrometheus(cfg.PrometheusURL),
-		loki:     query.NewLoki(cfg.LokiURL),
-		notifier: newNotifier(cfg.TelegramToken, cfg.TelegramChatID, cfg.TelegramCriticalChatID),
+		cfg:    cfg,
+		log:    log,
+		authn:  auth.NewService(users),
+		alerts: alerts,
+		eval:   alert.NewEvaluator(alerts, log),
+		prom:   prom,
+		loki:   query.NewLoki(cfg.LokiURL),
 	}
 
 	if cfg.AIURL != "" {
@@ -84,11 +87,11 @@ func New(cfg Config, users *auth.Store, log *zap.Logger) (*Server, error) {
 	mux.HandleFunc("GET /api/wifi", s.authn.RequireAuth(s.handleWifi))
 	mux.HandleFunc("GET /api/traffic", s.authn.RequireAuth(s.handleTraffic))
 	mux.HandleFunc("GET /api/firewall", s.authn.RequireAuth(s.handleFirewall))
-	mux.HandleFunc("GET /api/alerts", s.authn.RequireAuth(s.handleAlerts))
-	mux.HandleFunc("GET /api/alerts/history", s.authn.RequireAuth(s.handleAlertHistory))
-	mux.HandleFunc("GET /api/alerts/settings", s.authn.RequireAuth(s.handleAlertSettings))
-	mux.HandleFunc("PUT /api/alerts/settings", s.authn.RequireAdmin(s.handleAlertSettingsUpdate))
-	mux.HandleFunc("POST /api/alerts/test-notify", s.authn.RequireAdmin(s.handleTestNotify))
+	mux.HandleFunc("GET /api/alerts", s.authn.RequireAuth(s.alerts.Alerts))
+	mux.HandleFunc("GET /api/alerts/history", s.authn.RequireAuth(s.alerts.History))
+	mux.HandleFunc("GET /api/alerts/settings", s.authn.RequireAuth(s.alerts.Settings))
+	mux.HandleFunc("PUT /api/alerts/settings", s.authn.RequireAdmin(s.alerts.SettingsUpdate))
+	mux.HandleFunc("POST /api/alerts/test-notify", s.authn.RequireAdmin(s.alerts.TestNotify))
 	mux.HandleFunc("GET /api/topology", s.authn.RequireAuth(s.handleTopology))
 	mux.HandleFunc("GET /api/logs/categories", s.authn.RequireAuth(s.handleLogsCategories))
 
@@ -137,52 +140,9 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, filepath.Join(s.cfg.StaticDir, "index.html"))
 }
 
-// runAlertEvaluator periodically evaluates the alert rules and records
-// fire/resolve transitions to the history table, so the timeline reflects real
-// events even when nobody is viewing the Alerts page. Runs until ctx is done.
-func (s *Server) runAlertEvaluator(ctx context.Context) {
-	const interval = 30 * time.Second
-	first := true
-	evaluate := func() {
-		ectx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
-		// Guard: if Prometheus is unreachable, activeAlerts() returns empty and we
-		// would wrongly resolve every open alert (then re-fire on recovery). Skip
-		// the tick instead so the history stays clean during a Prometheus blip.
-		if _, err := s.prom.Scalar(ectx, "vector(1)"); err != nil {
-			return
-		}
-		active := s.activeAlerts(ectx, s.astore.thresholds())
-		fired, resolved, err := s.astore.recordTransitions(active)
-		if err != nil {
-			s.log.Warn("alert history record failed", zap.Error(err))
-			return
-		}
-		// Skip notifications on the very first tick: on a fresh DB every current
-		// alert would look "newly fired" and spam the chat. After that, restarts
-		// don't re-fire (open rows persist in SQLite), so this only mutes genuine
-		// pre-existing state at first boot.
-		if !first {
-			s.notifier.notifyTransitions(ectx, fired, resolved)
-		}
-		first = false
-	}
-	evaluate() // once at startup so history starts immediately
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			evaluate()
-		}
-	}
-}
-
 // Run starts the server and blocks until ctx is cancelled.
 func (s *Server) Run(ctx context.Context) error {
-	go s.runAlertEvaluator(ctx)
+	go s.eval.Run(ctx)
 	errCh := make(chan error, 1)
 	go func() {
 		s.log.Info("bff listening",
