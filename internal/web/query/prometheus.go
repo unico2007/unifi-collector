@@ -1,8 +1,8 @@
-// Package web is the BFF (backend-for-frontend) for the Unico dashboard. It
-// serves the built React app, proxies the AI service, authenticates users, and
-// exposes /api/* JSON built from Prometheus + Loki — so the browser never talks
-// to those systems directly.
-package web
+// Package query holds the read-only clients the BFF uses to pull data from
+// Prometheus and Loki. These are the "repository" layer: they know how to talk
+// to the upstream stores and return plain Go values, with no HTTP-handler or
+// presentation concerns.
+package query
 
 import (
 	"context"
@@ -14,21 +14,23 @@ import (
 	"time"
 )
 
-// promClient is a tiny Prometheus HTTP API client: just enough for instant and
+// Prometheus is a tiny Prometheus HTTP API client: just enough for instant and
 // range queries. It deliberately avoids the official client to keep deps light.
-type promClient struct {
+type Prometheus struct {
 	base string
 	http *http.Client
 }
 
-func newPromClient(base string) *promClient {
-	return &promClient{base: base, http: &http.Client{Timeout: 10 * time.Second}}
+// NewPrometheus builds a Prometheus client pointed at base (e.g.
+// http://prometheus:9090).
+func NewPrometheus(base string) *Prometheus {
+	return &Prometheus{base: base, http: &http.Client{Timeout: 10 * time.Second}}
 }
 
-// sample is one Prometheus series with its label set and a scalar value.
-type sample struct {
-	labels map[string]string
-	value  float64
+// Sample is one Prometheus series with its label set and a scalar value.
+type Sample struct {
+	Labels map[string]string
+	Value  float64
 }
 
 type promResponse struct {
@@ -43,8 +45,8 @@ type promResponse struct {
 	Error string `json:"error"`
 }
 
-// query runs an instant PromQL query and returns the vector as samples.
-func (c *promClient) query(ctx context.Context, expr string) ([]sample, error) {
+// Query runs an instant PromQL query and returns the vector as samples.
+func (c *Prometheus) Query(ctx context.Context, expr string) ([]Sample, error) {
 	u := fmt.Sprintf("%s/api/v1/query?query=%s", c.base, url.QueryEscape(expr))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
@@ -64,7 +66,7 @@ func (c *promClient) query(ctx context.Context, expr string) ([]sample, error) {
 		return nil, fmt.Errorf("prometheus: %s", pr.Error)
 	}
 
-	out := make([]sample, 0, len(pr.Data.Result))
+	out := make([]Sample, 0, len(pr.Data.Result))
 	for _, r := range pr.Data.Result {
 		v := 0.0
 		if len(r.Value) == 2 {
@@ -72,22 +74,22 @@ func (c *promClient) query(ctx context.Context, expr string) ([]sample, error) {
 				v, _ = strconv.ParseFloat(s, 64)
 			}
 		}
-		out = append(out, sample{labels: r.Metric, value: v})
+		out = append(out, Sample{Labels: r.Metric, Value: v})
 	}
 	return out, nil
 }
 
-// scalar runs an instant query expected to return a single value (e.g. a
+// Scalar runs an instant query expected to return a single value (e.g. a
 // count) and returns it, or 0 if the result is empty.
-func (c *promClient) scalar(ctx context.Context, expr string) (float64, error) {
-	s, err := c.query(ctx, expr)
+func (c *Prometheus) Scalar(ctx context.Context, expr string) (float64, error) {
+	s, err := c.Query(ctx, expr)
 	if err != nil {
 		return 0, err
 	}
 	if len(s) == 0 {
 		return 0, nil
 	}
-	return s[0].value, nil
+	return s[0].Value, nil
 }
 
 type promRangeResponse struct {
@@ -100,10 +102,10 @@ type promRangeResponse struct {
 	Error string `json:"error"`
 }
 
-// parseRange maps a UI range key ("1h"/"6h"/"24h"/"7d") to a query duration and
+// ParseRange maps a UI range key ("1h"/"6h"/"24h"/"7d") to a query duration and
 // step. Steps are chosen to keep each series around 24-30 points so the charts
 // stay readable at every zoom level. Unknown values default to 24h.
-func parseRange(r string) (dur, step time.Duration) {
+func ParseRange(r string) (dur, step time.Duration) {
 	switch r {
 	case "1h":
 		return time.Hour, 2 * time.Minute
@@ -116,9 +118,9 @@ func parseRange(r string) (dur, step time.Duration) {
 	}
 }
 
-// rangeSeries runs a range query over the last dur (single-series expected) and
+// RangeSeries runs a range query over the last dur (single-series expected) and
 // returns the values as a plain float slice for the frontend charts.
-func (c *promClient) rangeSeries(ctx context.Context, expr string, dur time.Duration, step time.Duration) ([]float64, error) {
+func (c *Prometheus) RangeSeries(ctx context.Context, expr string, dur time.Duration, step time.Duration) ([]float64, error) {
 	end := time.Now()
 	start := end.Add(-dur)
 	u := fmt.Sprintf("%s/api/v1/query_range?query=%s&start=%d&end=%d&step=%d",

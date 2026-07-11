@@ -3,6 +3,8 @@ package web
 import (
 	"net/http"
 	"sort"
+
+	"github.com/murad/unifi-collector/internal/web/respond"
 )
 
 // kv is the {label,value} shape the frontend charts consume.
@@ -38,10 +40,10 @@ func (s *Server) handleWifi(w http.ResponseWriter, r *http.Request) {
 	// exported with rssi=0, which lands in the strongest bin and the "good"
 	// quality bucket. The collector no longer emits those series, but the
 	// filter also shields against data scraped by older collector versions.
-	clients, err := s.prom.query(ctx, `unifi_client_rssi{band!=""}`)
+	clients, err := s.prom.Query(ctx, `unifi_client_rssi{band!=""}`)
 	if err != nil {
 		d.ClientsPerAp, d.VLANSplit, d.BandSplit = []kv{}, []kv{}, []kv{}
-		writeJSON(w, http.StatusOK, d)
+		respond.JSON(w, http.StatusOK, d)
 		return
 	}
 	names := s.apNames(ctx)
@@ -50,7 +52,7 @@ func (s *Server) handleWifi(w http.ResponseWriter, r *http.Request) {
 	perVlan := map[string]float64{}
 	perBand := map[string]float64{}
 	for _, c := range clients {
-		rssi := c.value
+		rssi := c.Value
 		// histogram
 		for i, edge := range rssiBinEdges {
 			if rssi <= edge {
@@ -67,13 +69,13 @@ func (s *Server) handleWifi(w http.ResponseWriter, r *http.Request) {
 		default:
 			d.Quality.Poor++
 		}
-		if ap := c.labels["ap"]; ap != "" {
+		if ap := c.Labels["ap"]; ap != "" {
 			perAp[apLabel(names, ap)]++
 		}
-		if vlan := c.labels["vlan"]; vlan != "" {
+		if vlan := c.Labels["vlan"]; vlan != "" {
 			perVlan[vlan]++
 		}
-		if band := c.labels["band"]; band != "" {
+		if band := c.Labels["band"]; band != "" {
 			perBand[band]++
 		}
 	}
@@ -81,7 +83,7 @@ func (s *Server) handleWifi(w http.ResponseWriter, r *http.Request) {
 	d.ClientsPerAp = sortedKV(perAp, "")
 	d.VLANSplit = sortedKV(perVlan, "VLAN ")
 	d.BandSplit = sortedKV(perBand, "")
-	writeJSON(w, http.StatusOK, d)
+	respond.JSON(w, http.StatusOK, d)
 }
 
 // sortedKV turns a label->count map into a value-descending kv slice, with an

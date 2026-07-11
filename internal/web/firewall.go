@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/murad/unifi-collector/internal/web/respond"
 )
 
 type attackDTO struct {
@@ -34,7 +36,7 @@ type firewallDTO struct {
 // — no fabricated data.
 func (s *Server) handleFirewall(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	lines := s.loki.recent(ctx, `{vendor="kerio"}`, 24*time.Hour, 5000)
+	lines := s.loki.Recent(ctx, `{vendor="kerio"}`, 24*time.Hour, 5000)
 
 	out := firewallDTO{
 		Allow:         make([]float64, 24),
@@ -89,7 +91,7 @@ func (s *Server) handleFirewall(w http.ResponseWriter, r *http.Request) {
 	out.TopRules = topKV(ruleCounts, 8)
 	out.WebCategories = topKV(contentCounts, 8)
 
-	writeJSON(w, http.StatusOK, out)
+	respond.JSON(w, http.StatusOK, out)
 }
 
 // kerioEvent is the subset of a Kerio filter-log line the Firewall page needs.

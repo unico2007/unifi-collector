@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/murad/unifi-collector/internal/web/query"
+	"github.com/murad/unifi-collector/internal/web/respond"
 )
 
 type detailClient struct {
@@ -28,60 +31,60 @@ func (s *Server) handleDeviceDetail(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	sel := fmt.Sprintf(`{name="%s"}`, escapeLabel(name))
 
-	infos, err := s.prom.query(ctx, `unifi_device_info`+sel)
+	infos, err := s.prom.Query(ctx, `unifi_device_info`+sel)
 	if err != nil || len(infos) == 0 {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "device not found"})
+		respond.JSON(w, http.StatusNotFound, map[string]string{"error": "device not found"})
 		return
 	}
 	in := infos[0]
-	mac := in.labels["mac"]
+	mac := in.Labels["mac"]
 
 	dev := deviceDTO{
-		Name:   in.labels["name"],
-		Vendor: in.labels["vendor"],
-		Type:   in.labels["type"],
-		Model:  in.labels["model"],
-		IP:     ipOrDash(in.labels["ip"]),
+		Name:   in.Labels["name"],
+		Vendor: in.Labels["vendor"],
+		Type:   in.Labels["type"],
+		Model:  in.Labels["model"],
+		IP:     ipOrDash(in.Labels["ip"]),
 		MAC:    mac,
-		State:  in.labels["state"],
+		State:  in.Labels["state"],
 	}
-	if v, e := s.prom.scalar(ctx, `unifi_device_cpu_percent`+sel); e == nil {
+	if v, e := s.prom.Scalar(ctx, `unifi_device_cpu_percent`+sel); e == nil {
 		dev.CPU = v
 	}
-	if v, e := s.prom.scalar(ctx, `unifi_device_memory_percent`+sel); e == nil {
+	if v, e := s.prom.Scalar(ctx, `unifi_device_memory_percent`+sel); e == nil {
 		dev.Memory = v
 	}
-	if v, e := s.prom.scalar(ctx, `unifi_device_uptime_seconds`+sel); e == nil {
+	if v, e := s.prom.Scalar(ctx, `unifi_device_uptime_seconds`+sel); e == nil {
 		dev.Uptime = formatUptime(v)
 	}
 
-	dur, step := parseRange(r.URL.Query().Get("range"))
+	dur, step := query.ParseRange(r.URL.Query().Get("range"))
 	d := deviceDetailDTO{Device: dev}
-	d.CPU = mustSeries(s.prom.rangeSeries(ctx, `unifi_device_cpu_percent`+sel, dur, step))
-	d.Memory = mustSeries(s.prom.rangeSeries(ctx, `unifi_device_memory_percent`+sel, dur, step))
-	d.Rx = toMbps(mustSeries(s.prom.rangeSeries(ctx, `rate(unifi_device_rx_bytes`+sel+`[5m])`, dur, step)))
-	d.Tx = toMbps(mustSeries(s.prom.rangeSeries(ctx, `rate(unifi_device_tx_bytes`+sel+`[5m])`, dur, step)))
+	d.CPU = mustSeries(s.prom.RangeSeries(ctx, `unifi_device_cpu_percent`+sel, dur, step))
+	d.Memory = mustSeries(s.prom.RangeSeries(ctx, `unifi_device_memory_percent`+sel, dur, step))
+	d.Rx = toMbps(mustSeries(s.prom.RangeSeries(ctx, `rate(unifi_device_rx_bytes`+sel+`[5m])`, dur, step)))
+	d.Tx = toMbps(mustSeries(s.prom.RangeSeries(ctx, `rate(unifi_device_tx_bytes`+sel+`[5m])`, dur, step)))
 
 	// Clients associated with this AP. The client "ap" label holds the AP's
 	// MAC, so match on the device MAC rather than its name.
 	d.Clients = []detailClient{}
 	clientSel := fmt.Sprintf(`{ap="%s"}`, escapeLabel(mac))
-	if rows, e := s.prom.query(ctx, `unifi_client_rssi`+clientSel); e == nil {
+	if rows, e := s.prom.Query(ctx, `unifi_client_rssi`+clientSel); e == nil {
 		rx := s.byMAC(ctx, `unifi_client_rx_rate`+clientSel)
 		tx := s.byMAC(ctx, `unifi_client_tx_rate`+clientSel)
 		for _, c := range rows {
-			cmac := c.labels["mac"]
+			cmac := c.Labels["mac"]
 			d.Clients = append(d.Clients, detailClient{
-				Name: c.labels["name"],
+				Name: c.Labels["name"],
 				MAC:  cmac,
-				RSSI: c.value,
+				RSSI: c.Value,
 				Rx:   formatRate(rx[cmac]),
 				Tx:   formatRate(tx[cmac]),
 			})
 		}
 	}
 
-	writeJSON(w, http.StatusOK, d)
+	respond.JSON(w, http.StatusOK, d)
 }
 
 // escapeLabel escapes a value for safe inclusion inside a PromQL/LogQL double

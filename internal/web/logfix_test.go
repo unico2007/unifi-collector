@@ -1,11 +1,15 @@
 package web
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/murad/unifi-collector/internal/web/query"
+)
 
 func TestDecodeAndParseNoJSONTail(t *testing.T) {
 	raw := `{"event":"unknown","level":"info","msg":"CEF:0|Ubiquiti|UniFi OS|4.3.1|1|Admin Accessed UniFi OS|1|UNIFIdeviceName=Unico UCK G2 UNIFIcategory=admin msg=admin accessed the UniFi OS using the console's IP. Source IP: 10.10.0.243","vendor":"unifi","site":"default"}`
 
-	msg, level := decodeLogLine(raw, "warn")
+	msg, level := query.DecodeLogLine(raw, "warn")
 	if level != "info" {
 		t.Fatalf("level = %q, want info (inner JSON level)", level)
 	}
@@ -31,12 +35,5 @@ func TestDecodeAndParseNoJSONTail(t *testing.T) {
 	want := "Unico UCK G2: admin accessed the UniFi OS using the console's IP. Source IP: 10.10.0.243"
 	if f != want {
 		t.Errorf("friendlyLog = %q, want %q", f, want)
-	}
-}
-
-func TestDecodeLogLineNonJSONFallback(t *testing.T) {
-	msg, level := decodeLogLine("plain text line", "error")
-	if msg != "plain text line" || level != "error" {
-		t.Fatalf("fallback failed: msg=%q level=%q", msg, level)
 	}
 }

@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+
+	"github.com/murad/unifi-collector/internal/web/query"
+	"github.com/murad/unifi-collector/internal/web/respond"
 )
 
 type talker struct {
@@ -28,13 +31,13 @@ type trafficDTO struct {
 // view); this site's gateway is a Kerio box outside UniFi, so fall back to
 // switches, then APs.
 func (s *Server) trafficTier(ctx context.Context) string {
-	rows, err := s.prom.query(ctx, `count by (type) (unifi_device_rx_bytes)`)
+	rows, err := s.prom.Query(ctx, `count by (type) (unifi_device_rx_bytes)`)
 	if err != nil {
 		return "uap"
 	}
 	have := map[string]bool{}
 	for _, r := range rows {
-		have[r.labels["type"]] = true
+		have[r.Labels["type"]] = true
 	}
 	for _, t := range []string{"ugw", "usw", "uap"} {
 		if have[t] {
@@ -65,14 +68,14 @@ func (s *Server) handleTraffic(w http.ResponseWriter, r *http.Request) {
 
 	// Throughput over the selected range (bytes/s -> Mbps), measured at a
 	// single device tier so multi-hop flows aren't double-counted.
-	dur, step := parseRange(r.URL.Query().Get("range"))
+	dur, step := query.ParseRange(r.URL.Query().Get("range"))
 	downRate, upRate, downTotal, upTotal := trafficQueries(s.trafficTier(ctx))
-	d.Rx = toMbps(mustSeries(s.prom.rangeSeries(ctx, downRate, dur, step)))
-	d.Tx = toMbps(mustSeries(s.prom.rangeSeries(ctx, upRate, dur, step)))
+	d.Rx = toMbps(mustSeries(s.prom.RangeSeries(ctx, downRate, dur, step)))
+	d.Tx = toMbps(mustSeries(s.prom.RangeSeries(ctx, upRate, dur, step)))
 
 	// Cumulative totals (same tier and direction mapping as the chart).
-	rxTotal, _ := s.prom.scalar(ctx, downTotal)
-	txTotal, _ := s.prom.scalar(ctx, upTotal)
+	rxTotal, _ := s.prom.Scalar(ctx, downTotal)
+	txTotal, _ := s.prom.Scalar(ctx, upTotal)
 	d.TotalRx = formatBytes(rxTotal)
 	d.TotalTx = formatBytes(txTotal)
 
@@ -83,31 +86,31 @@ func (s *Server) handleTraffic(w http.ResponseWriter, r *http.Request) {
 
 	// Per-AP current throughput (Mbps).
 	d.PerAp = []kv{}
-	if rows, err := s.prom.query(ctx,
+	if rows, err := s.prom.Query(ctx,
 		`sum by (name) (rate(unifi_device_rx_bytes{type="uap"}[5m]) + rate(unifi_device_tx_bytes{type="uap"}[5m]))`); err == nil {
 		m := map[string]float64{}
 		for _, r := range rows {
-			m[r.labels["name"]] = r.value * 8 / 1e6
+			m[r.Labels["name"]] = r.Value * 8 / 1e6
 		}
 		d.PerAp = sortedKV(m, "")
 	}
 
-	writeJSON(w, http.StatusOK, d)
+	respond.JSON(w, http.StatusOK, d)
 }
 
 func (s *Server) topTalkers(ctx context.Context) []talker {
 	rate := map[string]float64{} // name -> bits/s
 	for _, metric := range []string{`unifi_client_rx_rate`, `unifi_client_tx_rate`} {
-		rows, err := s.prom.query(ctx, metric)
+		rows, err := s.prom.Query(ctx, metric)
 		if err != nil {
 			continue
 		}
 		for _, r := range rows {
-			name := r.labels["name"]
+			name := r.Labels["name"]
 			if name == "" {
-				name = r.labels["mac"]
+				name = r.Labels["mac"]
 			}
-			rate[name] += r.value
+			rate[name] += r.Value
 		}
 	}
 	out := make([]talker, 0, len(rate))

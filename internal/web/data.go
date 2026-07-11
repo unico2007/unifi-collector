@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/murad/unifi-collector/internal/web/query"
+	"github.com/murad/unifi-collector/internal/web/respond"
 )
 
 // --- response DTOs (must mirror web/src/lib/api.ts) ------------------------
@@ -41,12 +44,12 @@ type overviewDTO struct {
 		Online  int `json:"online"`
 		Offline int `json:"offline"`
 	} `json:"devices"`
-	Clients      int         `json:"clients"`
-	Health       int         `json:"health"`
-	Alerts       int         `json:"alerts"`
-	ClientSeries []float64   `json:"clientSeries"`
-	VendorSplit  []vendorDTO `json:"vendorSplit"`
-	RecentLogs   []logLine   `json:"recentLogs"`
+	Clients      int             `json:"clients"`
+	Health       int             `json:"health"`
+	Alerts       int             `json:"alerts"`
+	ClientSeries []float64       `json:"clientSeries"`
+	VendorSplit  []vendorDTO     `json:"vendorSplit"`
+	RecentLogs   []query.LogLine `json:"recentLogs"`
 }
 
 type vendorDTO struct {
@@ -61,13 +64,13 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var o overviewDTO
 
-	online, _ := s.prom.scalar(ctx, `count(unifi_device_up == 1)`)
-	offline, _ := s.prom.scalar(ctx, `count(unifi_device_up == 0)`)
+	online, _ := s.prom.Scalar(ctx, `count(unifi_device_up == 1)`)
+	offline, _ := s.prom.Scalar(ctx, `count(unifi_device_up == 0)`)
 	o.Devices.Online = int(online)
 	o.Devices.Offline = int(offline)
 	o.Devices.Total = int(online + offline)
 
-	clients, _ := s.prom.scalar(ctx, `sum(unifi_clients_total)`)
+	clients, _ := s.prom.Scalar(ctx, `sum(unifi_clients_total)`)
 	o.Clients = int(clients)
 
 	// Health: share of devices online (simple, explainable).
@@ -78,8 +81,8 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	}
 	o.Alerts = len(s.activeAlerts(ctx, s.astore.thresholds())) // real active-alert count (same engine as the Alerts page)
 
-	dur, step := parseRange(r.URL.Query().Get("range"))
-	o.ClientSeries, _ = s.prom.rangeSeries(ctx, `sum(unifi_clients_total)`, dur, step)
+	dur, step := query.ParseRange(r.URL.Query().Get("range"))
+	o.ClientSeries, _ = s.prom.RangeSeries(ctx, `sum(unifi_clients_total)`, dur, step)
 	if o.ClientSeries == nil {
 		o.ClientSeries = []float64{}
 	}
@@ -92,28 +95,28 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 
 	// Recent logs across both vendors, newest first. Render each CEF payload as
 	// a short readable line instead of the raw JSON-wrapped log.
-	o.RecentLogs = s.loki.recent(ctx, `{vendor=~"unifi|kerio"}`, time.Hour, 8)
+	o.RecentLogs = s.loki.Recent(ctx, `{vendor=~"unifi|kerio"}`, time.Hour, 8)
 	for i := range o.RecentLogs {
 		o.RecentLogs[i].Msg = friendlyLog(o.RecentLogs[i].Msg)
 	}
 	if o.RecentLogs == nil {
-		o.RecentLogs = []logLine{}
+		o.RecentLogs = []query.LogLine{}
 	}
 
-	writeJSON(w, http.StatusOK, o)
+	respond.JSON(w, http.StatusOK, o)
 }
 
 func (s *Server) vendorSplit(ctx context.Context) []vendorDTO {
 	devByVendor := map[string]int{}
-	if rows, err := s.prom.query(ctx, `sum by (vendor) (unifi_devices_total)`); err == nil {
+	if rows, err := s.prom.Query(ctx, `sum by (vendor) (unifi_devices_total)`); err == nil {
 		for _, r := range rows {
-			devByVendor[r.labels["vendor"]] = int(r.value)
+			devByVendor[r.Labels["vendor"]] = int(r.Value)
 		}
 	}
 	cliByVendor := map[string]int{}
-	if rows, err := s.prom.query(ctx, `sum by (vendor) (unifi_clients_total)`); err == nil {
+	if rows, err := s.prom.Query(ctx, `sum by (vendor) (unifi_clients_total)`); err == nil {
 		for _, r := range rows {
-			cliByVendor[r.labels["vendor"]] = int(r.value)
+			cliByVendor[r.Labels["vendor"]] = int(r.Value)
 		}
 	}
 	// Stable order: unifi first, then kerio, then any others.
@@ -146,16 +149,16 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 	uptime := s.byMAC(ctx, `unifi_device_uptime_seconds`)
 	up := s.byMAC(ctx, `unifi_device_up`)
 
-	infos, err := s.prom.query(ctx, `unifi_device_info`)
+	infos, err := s.prom.Query(ctx, `unifi_device_info`)
 	if err != nil {
-		writeJSON(w, http.StatusOK, []deviceDTO{})
+		respond.JSON(w, http.StatusOK, []deviceDTO{})
 		return
 	}
 
 	out := make([]deviceDTO, 0, len(infos))
 	for _, in := range infos {
-		mac := in.labels["mac"]
-		state := in.labels["state"]
+		mac := in.Labels["mac"]
+		state := in.Labels["state"]
 		if state == "" {
 			if up[mac] == 1 {
 				state = "online"
@@ -164,11 +167,11 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		out = append(out, deviceDTO{
-			Name:   in.labels["name"],
-			Vendor: in.labels["vendor"],
-			Type:   in.labels["type"],
-			Model:  in.labels["model"],
-			IP:     ipOrDash(in.labels["ip"]),
+			Name:   in.Labels["name"],
+			Vendor: in.Labels["vendor"],
+			Type:   in.Labels["type"],
+			Model:  in.Labels["model"],
+			IP:     ipOrDash(in.Labels["ip"]),
 			MAC:    mac,
 			State:  state,
 			CPU:    cpu[mac],
@@ -176,15 +179,15 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 			Uptime: formatUptime(uptime[mac]),
 		})
 	}
-	writeJSON(w, http.StatusOK, out)
+	respond.JSON(w, http.StatusOK, out)
 }
 
 func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	rssi, err := s.prom.query(ctx, `unifi_client_rssi`)
+	rssi, err := s.prom.Query(ctx, `unifi_client_rssi`)
 	if err != nil {
-		writeJSON(w, http.StatusOK, []clientDTO{})
+		respond.JSON(w, http.StatusOK, []clientDTO{})
 		return
 	}
 	rx := s.byMAC(ctx, `unifi_client_rx_rate`)
@@ -197,13 +200,13 @@ func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 
 	out := make([]clientDTO, 0, len(rssi))
 	for _, c := range rssi {
-		mac := c.labels["mac"]
+		mac := c.Labels["mac"]
 		out = append(out, clientDTO{
-			Name:  c.labels["name"],
+			Name:  c.Labels["name"],
 			MAC:   mac,
-			AP:    apLabel(names, c.labels["ap"]),
-			VLAN:  c.labels["vlan"],
-			RSSI:  c.value,
+			AP:    apLabel(names, c.Labels["ap"]),
+			VLAN:  c.Labels["vlan"],
+			RSSI:  c.Value,
 			Rx:    formatRate(rx[mac]),
 			Tx:    formatRate(tx[mac]),
 			Data:  formatBytes(rxb[mac] + txb[mac]),
@@ -211,7 +214,7 @@ func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 			Since: formatUptime(conn[mac]),
 		})
 	}
-	writeJSON(w, http.StatusOK, out)
+	respond.JSON(w, http.StatusOK, out)
 }
 
 // apNames maps device MAC -> friendly name. The client "ap" label holds the
@@ -219,13 +222,13 @@ func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 // instead of a raw MAC across the clients, WiFi and device-detail views.
 func (s *Server) apNames(ctx context.Context) map[string]string {
 	m := map[string]string{}
-	rows, err := s.prom.query(ctx, `unifi_device_info`)
+	rows, err := s.prom.Query(ctx, `unifi_device_info`)
 	if err != nil {
 		return m
 	}
 	for _, r := range rows {
-		if mac := r.labels["mac"]; mac != "" && r.labels["name"] != "" {
-			m[mac] = r.labels["name"]
+		if mac := r.Labels["mac"]; mac != "" && r.Labels["name"] != "" {
+			m[mac] = r.Labels["name"]
 		}
 	}
 	return m
@@ -235,13 +238,13 @@ func (s *Server) apNames(ctx context.Context) map[string]string {
 // device IPs come from unifi_device_info).
 func (s *Server) clientIPs(ctx context.Context) map[string]string {
 	m := map[string]string{}
-	rows, err := s.prom.query(ctx, `unifi_client_info`)
+	rows, err := s.prom.Query(ctx, `unifi_client_info`)
 	if err != nil {
 		return m
 	}
 	for _, r := range rows {
-		if mac := r.labels["mac"]; mac != "" {
-			m[mac] = r.labels["ip"]
+		if mac := r.Labels["mac"]; mac != "" {
+			m[mac] = r.Labels["ip"]
 		}
 	}
 	return m
@@ -258,12 +261,12 @@ func apLabel(names map[string]string, ap string) string {
 // byMAC runs a query and indexes the scalar values by the "mac" label.
 func (s *Server) byMAC(ctx context.Context, expr string) map[string]float64 {
 	m := map[string]float64{}
-	rows, err := s.prom.query(ctx, expr)
+	rows, err := s.prom.Query(ctx, expr)
 	if err != nil {
 		return m
 	}
 	for _, r := range rows {
-		m[r.labels["mac"]] = r.value
+		m[r.Labels["mac"]] = r.Value
 	}
 	return m
 }
