@@ -16,9 +16,11 @@ import (
 	"syscall"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/murad/unifi-collector/internal/logger"
 	"github.com/murad/unifi-collector/internal/web"
-	"go.uber.org/zap"
+	"github.com/murad/unifi-collector/internal/web/auth"
 )
 
 var version = "dev"
@@ -48,7 +50,7 @@ func run() error {
 	)
 	flag.Parse()
 
-	users, err := web.OpenUserStore(*dbPath)
+	users, err := auth.OpenStore(*dbPath)
 	if err != nil {
 		return fmt.Errorf("open user store: %w", err)
 	}
