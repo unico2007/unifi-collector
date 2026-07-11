@@ -13,6 +13,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/murad/unifi-collector/internal/web/auth"
 	"github.com/murad/unifi-collector/internal/web/query"
 	"github.com/murad/unifi-collector/internal/web/respond"
 )
@@ -36,27 +37,25 @@ type Server struct {
 	cfg      Config
 	log      *zap.Logger
 	http     *http.Server
-	users    *userStore
+	authn    *auth.Service
 	astore   *alertStore
-	signer   *signer
 	prom     *query.Prometheus
 	loki     *query.Loki
 	notifier *notifier
 	aiProxy  *httputil.ReverseProxy
 }
 
-// New wires the server. The caller owns the userStore lifecycle via Close.
-func New(cfg Config, users *userStore, log *zap.Logger) (*Server, error) {
-	astore, err := newAlertStore(users.db)
+// New wires the server. The caller owns the auth.Store lifecycle via Close.
+func New(cfg Config, users *auth.Store, log *zap.Logger) (*Server, error) {
+	astore, err := newAlertStore(users.DB())
 	if err != nil {
 		return nil, err
 	}
 	s := &Server{
 		cfg:      cfg,
 		log:      log,
-		users:    users,
+		authn:    auth.NewService(users),
 		astore:   astore,
-		signer:   newSigner(users.secret),
 		prom:     query.NewPrometheus(cfg.PrometheusURL),
 		loki:     query.NewLoki(cfg.LokiURL),
 		notifier: newNotifier(cfg.TelegramToken, cfg.TelegramChatID, cfg.TelegramCriticalChatID),
@@ -73,29 +72,29 @@ func New(cfg Config, users *userStore, log *zap.Logger) (*Server, error) {
 	mux := http.NewServeMux()
 
 	// Auth.
-	mux.HandleFunc("POST /api/login", s.handleLogin)
-	mux.HandleFunc("POST /api/logout", s.handleLogout)
-	mux.HandleFunc("GET /api/me", s.handleMe)
+	mux.HandleFunc("POST /api/login", s.authn.Login)
+	mux.HandleFunc("POST /api/logout", s.authn.Logout)
+	mux.HandleFunc("GET /api/me", s.authn.Me)
 
 	// Data (auth-gated).
-	mux.HandleFunc("GET /api/overview", s.requireAuth(s.handleOverview))
-	mux.HandleFunc("GET /api/devices", s.requireAuth(s.handleDevices))
-	mux.HandleFunc("GET /api/devices/{name}", s.requireAuth(s.handleDeviceDetail))
-	mux.HandleFunc("GET /api/clients", s.requireAuth(s.handleClients))
-	mux.HandleFunc("GET /api/wifi", s.requireAuth(s.handleWifi))
-	mux.HandleFunc("GET /api/traffic", s.requireAuth(s.handleTraffic))
-	mux.HandleFunc("GET /api/firewall", s.requireAuth(s.handleFirewall))
-	mux.HandleFunc("GET /api/alerts", s.requireAuth(s.handleAlerts))
-	mux.HandleFunc("GET /api/alerts/history", s.requireAuth(s.handleAlertHistory))
-	mux.HandleFunc("GET /api/alerts/settings", s.requireAuth(s.handleAlertSettings))
-	mux.HandleFunc("PUT /api/alerts/settings", s.requireAdmin(s.handleAlertSettingsUpdate))
-	mux.HandleFunc("POST /api/alerts/test-notify", s.requireAdmin(s.handleTestNotify))
-	mux.HandleFunc("GET /api/topology", s.requireAuth(s.handleTopology))
-	mux.HandleFunc("GET /api/logs/categories", s.requireAuth(s.handleLogsCategories))
+	mux.HandleFunc("GET /api/overview", s.authn.RequireAuth(s.handleOverview))
+	mux.HandleFunc("GET /api/devices", s.authn.RequireAuth(s.handleDevices))
+	mux.HandleFunc("GET /api/devices/{name}", s.authn.RequireAuth(s.handleDeviceDetail))
+	mux.HandleFunc("GET /api/clients", s.authn.RequireAuth(s.handleClients))
+	mux.HandleFunc("GET /api/wifi", s.authn.RequireAuth(s.handleWifi))
+	mux.HandleFunc("GET /api/traffic", s.authn.RequireAuth(s.handleTraffic))
+	mux.HandleFunc("GET /api/firewall", s.authn.RequireAuth(s.handleFirewall))
+	mux.HandleFunc("GET /api/alerts", s.authn.RequireAuth(s.handleAlerts))
+	mux.HandleFunc("GET /api/alerts/history", s.authn.RequireAuth(s.handleAlertHistory))
+	mux.HandleFunc("GET /api/alerts/settings", s.authn.RequireAuth(s.handleAlertSettings))
+	mux.HandleFunc("PUT /api/alerts/settings", s.authn.RequireAdmin(s.handleAlertSettingsUpdate))
+	mux.HandleFunc("POST /api/alerts/test-notify", s.authn.RequireAdmin(s.handleTestNotify))
+	mux.HandleFunc("GET /api/topology", s.authn.RequireAuth(s.handleTopology))
+	mux.HandleFunc("GET /api/logs/categories", s.authn.RequireAuth(s.handleLogsCategories))
 
 	// AI (auth-gated proxy to the AI service).
 	if s.aiProxy != nil {
-		mux.HandleFunc("/api/ai/", s.requireAuth(s.handleAIProxy))
+		mux.HandleFunc("/api/ai/", s.authn.RequireAuth(s.handleAIProxy))
 	}
 
 	// Static frontend + SPA fallback (catch-all, must be last).

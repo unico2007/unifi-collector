@@ -1,0 +1,121 @@
+// Package auth is the BFF's authentication feature: the SQLite-backed user
+// store, HMAC-signed session cookies, the login/logout/me handlers, and the
+// RequireAuth/RequireAdmin middleware. It owns the shared *sql.DB (the alert
+// feature builds its tables on the same handle via Store.DB).
+package auth
+
+import (
+	"database/sql"
+	"encoding/hex"
+	"errors"
+	"os"
+	"path/filepath"
+
+	"golang.org/x/crypto/bcrypt"
+	_ "modernc.org/sqlite" // pure-Go driver: works with CGO_ENABLED=0
+
+	"crypto/rand"
+)
+
+// Store persists users in SQLite. There is intentionally NO register endpoint —
+// accounts are created out-of-band via the create-user CLI. It also holds a
+// persistent session-signing secret so signed cookies survive restarts.
+type Store struct {
+	db     *sql.DB
+	secret []byte
+}
+
+// OpenStore opens (creating if needed) the SQLite user database.
+func OpenStore(path string) (*Store, error) {
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return nil, err
+		}
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return nil, err
+	}
+	// Serialize DB access to one connection: the background alert evaluator and
+	// the HTTP handlers share this SQLite file, and a single connection avoids
+	// "database is locked" errors under concurrent writes (traffic is low).
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS users (
+		username TEXT PRIMARY KEY,
+		password_hash TEXT NOT NULL,
+		role TEXT NOT NULL DEFAULT 'guest'
+	)`); err != nil {
+		return nil, err
+	}
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)`); err != nil {
+		return nil, err
+	}
+	secret, err := loadOrCreateSecret(db)
+	if err != nil {
+		return nil, err
+	}
+	return &Store{db: db, secret: secret}, nil
+}
+
+// DB returns the underlying handle so sibling features (alerting) can create
+// their own tables on the same single-connection SQLite database.
+func (u *Store) DB() *sql.DB { return u.db }
+
+// loadOrCreateSecret returns a stable random secret persisted in the DB, so
+// session cookies stay valid across restarts and redeploys.
+func loadOrCreateSecret(db *sql.DB) ([]byte, error) {
+	var hexSecret string
+	err := db.QueryRow(`SELECT v FROM meta WHERE k = 'session_secret'`).Scan(&hexSecret)
+	if err == nil {
+		return hex.DecodeString(hexSecret)
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return nil, err
+	}
+	hexSecret = hex.EncodeToString(buf)
+	if _, err := db.Exec(`INSERT INTO meta (k, v) VALUES ('session_secret', ?)`, hexSecret); err != nil {
+		return nil, err
+	}
+	return buf, nil
+}
+
+// Close closes the underlying database.
+func (u *Store) Close() error { return u.db.Close() }
+
+// UpsertUser creates or updates a user (used by the CLI). role is "admin" or
+// "guest".
+func (u *Store) UpsertUser(username, password, role string) error {
+	if username == "" || password == "" {
+		return errors.New("username and password required")
+	}
+	if role != "admin" && role != "guest" {
+		return errors.New(`role must be "admin" or "guest"`)
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	_, err = u.db.Exec(`INSERT INTO users (username, password_hash, role)
+		VALUES (?, ?, ?)
+		ON CONFLICT(username) DO UPDATE SET password_hash=excluded.password_hash, role=excluded.role`,
+		username, string(hash), role)
+	return err
+}
+
+// verify checks credentials and returns the stored role on success.
+func (u *Store) verify(username, password string) (role string, ok bool) {
+	var hash string
+	err := u.db.QueryRow(`SELECT password_hash, role FROM users WHERE username = ?`, username).
+		Scan(&hash, &role)
+	if err != nil {
+		return "", false
+	}
+	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil {
+		return "", false
+	}
+	return role, true
+}
