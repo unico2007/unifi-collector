@@ -1,4 +1,4 @@
-package web
+package handler
 
 import (
 	"fmt"
@@ -26,7 +26,7 @@ type deviceDetailDTO struct {
 	Clients []detailClient `json:"clients"`
 }
 
-func (s *Server) handleDeviceDetail(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) DeviceDetail(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	name := r.PathValue("name")
 	sel := fmt.Sprintf(`{name="%s"}`, escapeLabel(name))

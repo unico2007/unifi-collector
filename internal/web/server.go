@@ -1,3 +1,8 @@
+// Package web is the BFF (backend-for-frontend) for the Unico dashboard. It
+// serves the built React app, proxies the AI service, authenticates users, and
+// exposes /api/* JSON built from Prometheus + Loki — so the browser never talks
+// to those systems directly. It is a thin composition root over the feature
+// packages: auth, alert, handler, query and respond.
 package web
 
 import (
@@ -15,6 +20,7 @@ import (
 
 	"github.com/murad/unifi-collector/internal/web/alert"
 	"github.com/murad/unifi-collector/internal/web/auth"
+	"github.com/murad/unifi-collector/internal/web/handler"
 	"github.com/murad/unifi-collector/internal/web/query"
 	"github.com/murad/unifi-collector/internal/web/respond"
 )
@@ -33,7 +39,10 @@ type Config struct {
 	WriteTimeout           time.Duration
 }
 
-// Server is the BFF. It owns the user store, sessions, and upstream clients.
+// Server is the BFF composition root: it wires the feature packages (auth,
+// alert, handler) to the HTTP router, serves the static frontend, proxies the
+// AI service, and runs the background alert evaluator. The features own their
+// own logic and state; this type only assembles and routes them.
 type Server struct {
 	cfg     Config
 	log     *zap.Logger
@@ -41,8 +50,7 @@ type Server struct {
 	authn   *auth.Service
 	alerts  *alert.Service
 	eval    *alert.Evaluator
-	prom    *query.Prometheus
-	loki    *query.Loki
+	h       *handler.Handlers
 	aiProxy *httputil.ReverseProxy
 }
 
@@ -53,6 +61,7 @@ func New(cfg Config, users *auth.Store, log *zap.Logger) (*Server, error) {
 		return nil, err
 	}
 	prom := query.NewPrometheus(cfg.PrometheusURL)
+	loki := query.NewLoki(cfg.LokiURL)
 	alerts := alert.NewService(prom, astore, cfg.TelegramToken, cfg.TelegramChatID, cfg.TelegramCriticalChatID)
 	s := &Server{
 		cfg:    cfg,
@@ -60,8 +69,7 @@ func New(cfg Config, users *auth.Store, log *zap.Logger) (*Server, error) {
 		authn:  auth.NewService(users),
 		alerts: alerts,
 		eval:   alert.NewEvaluator(alerts, log),
-		prom:   prom,
-		loki:   query.NewLoki(cfg.LokiURL),
+		h:      handler.New(prom, loki, alerts),
 	}
 
 	if cfg.AIURL != "" {
@@ -80,20 +88,20 @@ func New(cfg Config, users *auth.Store, log *zap.Logger) (*Server, error) {
 	mux.HandleFunc("GET /api/me", s.authn.Me)
 
 	// Data (auth-gated).
-	mux.HandleFunc("GET /api/overview", s.authn.RequireAuth(s.handleOverview))
-	mux.HandleFunc("GET /api/devices", s.authn.RequireAuth(s.handleDevices))
-	mux.HandleFunc("GET /api/devices/{name}", s.authn.RequireAuth(s.handleDeviceDetail))
-	mux.HandleFunc("GET /api/clients", s.authn.RequireAuth(s.handleClients))
-	mux.HandleFunc("GET /api/wifi", s.authn.RequireAuth(s.handleWifi))
-	mux.HandleFunc("GET /api/traffic", s.authn.RequireAuth(s.handleTraffic))
-	mux.HandleFunc("GET /api/firewall", s.authn.RequireAuth(s.handleFirewall))
+	mux.HandleFunc("GET /api/overview", s.authn.RequireAuth(s.h.Overview))
+	mux.HandleFunc("GET /api/devices", s.authn.RequireAuth(s.h.Devices))
+	mux.HandleFunc("GET /api/devices/{name}", s.authn.RequireAuth(s.h.DeviceDetail))
+	mux.HandleFunc("GET /api/clients", s.authn.RequireAuth(s.h.Clients))
+	mux.HandleFunc("GET /api/wifi", s.authn.RequireAuth(s.h.Wifi))
+	mux.HandleFunc("GET /api/traffic", s.authn.RequireAuth(s.h.Traffic))
+	mux.HandleFunc("GET /api/firewall", s.authn.RequireAuth(s.h.Firewall))
 	mux.HandleFunc("GET /api/alerts", s.authn.RequireAuth(s.alerts.Alerts))
 	mux.HandleFunc("GET /api/alerts/history", s.authn.RequireAuth(s.alerts.History))
 	mux.HandleFunc("GET /api/alerts/settings", s.authn.RequireAuth(s.alerts.Settings))
 	mux.HandleFunc("PUT /api/alerts/settings", s.authn.RequireAdmin(s.alerts.SettingsUpdate))
 	mux.HandleFunc("POST /api/alerts/test-notify", s.authn.RequireAdmin(s.alerts.TestNotify))
-	mux.HandleFunc("GET /api/topology", s.authn.RequireAuth(s.handleTopology))
-	mux.HandleFunc("GET /api/logs/categories", s.authn.RequireAuth(s.handleLogsCategories))
+	mux.HandleFunc("GET /api/topology", s.authn.RequireAuth(s.h.Topology))
+	mux.HandleFunc("GET /api/logs/categories", s.authn.RequireAuth(s.h.LogsCategories))
 
 	// AI (auth-gated proxy to the AI service).
 	if s.aiProxy != nil {

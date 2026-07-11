@@ -1,4 +1,4 @@
-package web
+package handler
 
 import (
 	"net"
@@ -29,12 +29,12 @@ type firewallDTO struct {
 	Attacks       []attackDTO `json:"attacks"`
 }
 
-// handleFirewall builds the Firewall page from Kerio Control firewall logs in
+// Firewall builds the Firewall page from Kerio Control firewall logs in
 // Loki (vendor="kerio"). Kerio ships every filter action over syslog; the
 // collector tags those lines vendor="kerio" (see internal/syslog). Until Kerio
 // logging is enabled the query returns nothing and every field is an honest zero
 // — no fabricated data.
-func (s *Server) handleFirewall(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) Firewall(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	lines := s.loki.Recent(ctx, `{vendor="kerio"}`, 24*time.Hour, 5000)
 

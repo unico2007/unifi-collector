@@ -1,4 +1,4 @@
-package web
+package handler
 
 import (
 	"context"
@@ -60,7 +60,7 @@ type vendorDTO struct {
 
 // --- handlers --------------------------------------------------------------
 
-func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) Overview(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var o overviewDTO
 
@@ -106,7 +106,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	respond.JSON(w, http.StatusOK, o)
 }
 
-func (s *Server) vendorSplit(ctx context.Context) []vendorDTO {
+func (s *Handlers) vendorSplit(ctx context.Context) []vendorDTO {
 	devByVendor := map[string]int{}
 	if rows, err := s.prom.Query(ctx, `sum by (vendor) (unifi_devices_total)`); err == nil {
 		for _, r := range rows {
@@ -141,7 +141,7 @@ func (s *Server) vendorSplit(ctx context.Context) []vendorDTO {
 	return out
 }
 
-func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) Devices(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	cpu := s.byMAC(ctx, `unifi_device_cpu_percent`)
@@ -182,7 +182,7 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 	respond.JSON(w, http.StatusOK, out)
 }
 
-func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) Clients(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	rssi, err := s.prom.Query(ctx, `unifi_client_rssi`)
@@ -220,7 +220,7 @@ func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 // apNames maps device MAC -> friendly name. The client "ap" label holds the
 // AP/switch MAC (ap_mac/sw_mac); this lets us show a readable device name
 // instead of a raw MAC across the clients, WiFi and device-detail views.
-func (s *Server) apNames(ctx context.Context) map[string]string {
+func (s *Handlers) apNames(ctx context.Context) map[string]string {
 	m := map[string]string{}
 	rows, err := s.prom.Query(ctx, `unifi_device_info`)
 	if err != nil {
@@ -236,7 +236,7 @@ func (s *Server) apNames(ctx context.Context) map[string]string {
 
 // clientIPs maps client MAC -> IP from the unifi_client_info metric (mirrors how
 // device IPs come from unifi_device_info).
-func (s *Server) clientIPs(ctx context.Context) map[string]string {
+func (s *Handlers) clientIPs(ctx context.Context) map[string]string {
 	m := map[string]string{}
 	rows, err := s.prom.Query(ctx, `unifi_client_info`)
 	if err != nil {
@@ -259,7 +259,7 @@ func apLabel(names map[string]string, ap string) string {
 }
 
 // byMAC runs a query and indexes the scalar values by the "mac" label.
-func (s *Server) byMAC(ctx context.Context, expr string) map[string]float64 {
+func (s *Handlers) byMAC(ctx context.Context, expr string) map[string]float64 {
 	m := map[string]float64{}
 	rows, err := s.prom.Query(ctx, expr)
 	if err != nil {

@@ -1,4 +1,4 @@
-package web
+package handler
 
 import (
 	"context"
@@ -30,7 +30,7 @@ type trafficDTO struct {
 // inflates the chart by the topology depth. Prefer the gateway (true WAN
 // view); this site's gateway is a Kerio box outside UniFi, so fall back to
 // switches, then APs.
-func (s *Server) trafficTier(ctx context.Context) string {
+func (s *Handlers) trafficTier(ctx context.Context) string {
 	rows, err := s.prom.Query(ctx, `count by (type) (unifi_device_rx_bytes)`)
 	if err != nil {
 		return "uap"
@@ -62,7 +62,7 @@ func trafficQueries(tier string) (downRate, upRate, downTotal, upTotal string) {
 	return rx, tx, rxT, txT
 }
 
-func (s *Server) handleTraffic(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) Traffic(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var d trafficDTO
 
@@ -98,7 +98,7 @@ func (s *Server) handleTraffic(w http.ResponseWriter, r *http.Request) {
 	respond.JSON(w, http.StatusOK, d)
 }
 
-func (s *Server) topTalkers(ctx context.Context) []talker {
+func (s *Handlers) topTalkers(ctx context.Context) []talker {
 	rate := map[string]float64{} // name -> bits/s
 	for _, metric := range []string{`unifi_client_rx_rate`, `unifi_client_tx_rate`} {
 		rows, err := s.prom.Query(ctx, metric)

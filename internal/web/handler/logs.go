@@ -1,4 +1,4 @@
-package web
+package handler
 
 import (
 	"context"
@@ -24,10 +24,10 @@ type logCategoryDTO struct {
 	Rows    [][]any  `json:"rows"`
 }
 
-// handleLogsCategories returns the Logs page categories: UniFi CEF events grouped
+// LogsCategories returns the Logs page categories: UniFi CEF events grouped
 // by event name, followed by Kerio firewall events grouped by rule. The frontend
 // splits them into UniFi/Kerio sidebar sections by the vendor field.
-func (s *Server) handleLogsCategories(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) LogsCategories(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	out := s.unifiCategories(ctx)
 	out = append(out, s.kerioCategories(ctx)...)
@@ -39,7 +39,7 @@ func (s *Server) handleLogsCategories(w http.ResponseWriter, r *http.Request) {
 
 // unifiCategories reads recent UniFi logs from Loki, parses their CEF payload and
 // groups them by CEF event name.
-func (s *Server) unifiCategories(ctx context.Context) []logCategoryDTO {
+func (s *Handlers) unifiCategories(ctx context.Context) []logCategoryDTO {
 	lines := s.loki.Recent(ctx, `{vendor="unifi"}`, 24*time.Hour, 800)
 
 	cols := []string{"Vaxt", "Səviyyə", "Cihaz", "Detal"}
@@ -88,7 +88,7 @@ func (s *Server) unifiCategories(ctx context.Context) []logCategoryDTO {
 // kerioCategories reads recent Kerio firewall logs from Loki and groups them by
 // firewall rule (the parsed [Rule] name / quoted rule). Each row shows the verdict
 // (blok/icazə), the source IP and the raw detail line.
-func (s *Server) kerioCategories(ctx context.Context) []logCategoryDTO {
+func (s *Handlers) kerioCategories(ctx context.Context) []logCategoryDTO {
 	lines := s.loki.Recent(ctx, `{vendor="kerio"}`, 24*time.Hour, 1500)
 
 	cols := []string{"Vaxt", "Əməl", "Mənbə", "Təsvir", "Detal"}
