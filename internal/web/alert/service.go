@@ -1,4 +1,4 @@
-package web
+package alert
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/murad/unifi-collector/internal/web/query"
 	"github.com/murad/unifi-collector/internal/web/respond"
 )
 
@@ -38,6 +39,21 @@ type alertsDTO struct {
 	TelegramCriticalRouting bool       `json:"telegramCriticalRouting"`
 }
 
+// Service exposes the alert HTTP handlers and the live rule evaluation. It
+// depends on Prometheus (for live rule queries), the alert Store (thresholds +
+// history) and the Telegram notifier.
+type Service struct {
+	prom     *query.Prometheus
+	store    *Store
+	notifier *notifier
+}
+
+// NewService builds the alert service. Telegram parameters are optional; when
+// blank, notifications are disabled.
+func NewService(prom *query.Prometheus, store *Store, tgToken, tgChat, tgCriticalChat string) *Service {
+	return &Service{prom: prom, store: store, notifier: newNotifier(tgToken, tgChat, tgCriticalChat)}
+}
+
 // rulesFor builds the rule list for the given thresholds. Rules are evaluated
 // live against Prometheus on every request — no background state, so "active
 // alerts" are always the current truth. CPU/memory limits are user-configurable
@@ -51,9 +67,10 @@ func rulesFor(th thresholds) []ruleDTO {
 	}
 }
 
-func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
+// Alerts returns the live active alerts plus the rule list and Telegram status.
+func (s *Service) Alerts(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	th := s.astore.thresholds()
+	th := s.store.thresholds()
 	var out alertsDTO
 	out.Active = s.activeAlerts(ctx, th)
 	out.Rules = rulesFor(th)
@@ -73,23 +90,23 @@ func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
 	respond.JSON(w, http.StatusOK, out)
 }
 
-// handleAlertHistory returns the recent fire/resolve timeline, newest first.
-func (s *Server) handleAlertHistory(w http.ResponseWriter, r *http.Request) {
+// History returns the recent fire/resolve timeline, newest first.
+func (s *Service) History(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	respond.JSON(w, http.StatusOK, s.astore.history(limit))
+	respond.JSON(w, http.StatusOK, s.store.history(limit))
 }
 
-// handleAlertSettings returns the current configurable thresholds.
-func (s *Server) handleAlertSettings(w http.ResponseWriter, _ *http.Request) {
-	respond.JSON(w, http.StatusOK, s.astore.thresholds())
+// Settings returns the current configurable thresholds.
+func (s *Service) Settings(w http.ResponseWriter, _ *http.Request) {
+	respond.JSON(w, http.StatusOK, s.store.thresholds())
 }
 
-// handleAlertSettingsUpdate persists new thresholds (admin-only; gated by the
-// route wrapper). Patch semantics: an omitted field keeps its stored value —
-// decoding it into a plain struct would zero it and silently revert the
-// admin's setting to the default. Out-of-range values are rejected, not
-// silently clamped, so a typo (150 for 15) gets feedback instead of a 200.
-func (s *Server) handleAlertSettingsUpdate(w http.ResponseWriter, r *http.Request) {
+// SettingsUpdate persists new thresholds (admin-only; gated by the route
+// wrapper). Patch semantics: an omitted field keeps its stored value — decoding
+// it into a plain struct would zero it and silently revert the admin's setting
+// to the default. Out-of-range values are rejected, not silently clamped, so a
+// typo (150 for 15) gets feedback instead of a 200.
+func (s *Service) SettingsUpdate(w http.ResponseWriter, r *http.Request) {
 	var patch struct {
 		CPU    *float64 `json:"cpuPercent"`
 		Memory *float64 `json:"memoryPercent"`
@@ -98,7 +115,7 @@ func (s *Server) handleAlertSettingsUpdate(w http.ResponseWriter, r *http.Reques
 		respond.JSON(w, http.StatusBadRequest, map[string]string{"error": "bad request"})
 		return
 	}
-	th := s.astore.thresholds()
+	th := s.store.thresholds()
 	if patch.CPU != nil {
 		th.CPU = *patch.CPU
 	}
@@ -109,16 +126,16 @@ func (s *Server) handleAlertSettingsUpdate(w http.ResponseWriter, r *http.Reques
 		respond.JSON(w, http.StatusBadRequest, map[string]string{"error": "thresholds must be between 1 and 100"})
 		return
 	}
-	if err := s.astore.setThresholds(th); err != nil {
+	if err := s.store.setThresholds(th); err != nil {
 		respond.JSON(w, http.StatusInternalServerError, map[string]string{"error": "save failed"})
 		return
 	}
-	respond.JSON(w, http.StatusOK, s.astore.thresholds())
+	respond.JSON(w, http.StatusOK, s.store.thresholds())
 }
 
-// handleTestNotify sends a test Telegram message so an admin can verify the
-// bot token + chat id are correct (admin-only; gated by the route wrapper).
-func (s *Server) handleTestNotify(w http.ResponseWriter, r *http.Request) {
+// TestNotify sends a test Telegram message so an admin can verify the bot token
+// + chat id are correct (admin-only; gated by the route wrapper).
+func (s *Service) TestNotify(w http.ResponseWriter, r *http.Request) {
 	if !s.notifier.enabled() {
 		respond.JSON(w, http.StatusOK, map[string]any{"enabled": false})
 		return
@@ -132,10 +149,16 @@ func (s *Server) handleTestNotify(w http.ResponseWriter, r *http.Request) {
 	respond.JSON(w, http.StatusOK, map[string]any{"enabled": true, "sent": true})
 }
 
+// ActiveCount returns the number of currently-active alerts, evaluated live
+// with the same engine as the Alerts page so the Overview badge always agrees.
+func (s *Service) ActiveCount(ctx context.Context) int {
+	return len(s.activeAlerts(ctx, s.store.thresholds()))
+}
+
 // activeAlerts evaluates every rule live against Prometheus and returns the
 // current active alerts, critical first. Shared by the Alerts page, the Overview
 // alert count, and the background history evaluator so they always agree.
-func (s *Server) activeAlerts(ctx context.Context, th thresholds) []alertDTO {
+func (s *Service) activeAlerts(ctx context.Context, th thresholds) []alertDTO {
 	active := []alertDTO{}
 
 	active = append(active, s.alertDevices(ctx, `unifi_device_up == 0`, "critical", "Cihaz offline",
@@ -177,7 +200,7 @@ func (s *Server) activeAlerts(ctx context.Context, th thresholds) []alertDTO {
 }
 
 // alertDevices runs a threshold query and builds one alert per matching series.
-func (s *Server) alertDevices(ctx context.Context, expr, level, rule string,
+func (s *Service) alertDevices(ctx context.Context, expr, level, rule string,
 	build func(labels map[string]string, value float64) (msg, val string)) []alertDTO {
 	rows, err := s.prom.Query(ctx, expr)
 	if err != nil {
