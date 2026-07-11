@@ -1,4 +1,4 @@
-package web
+package handler
 
 import (
 	"net/http"
@@ -30,7 +30,7 @@ type wifiDTO struct {
 var rssiBinLabels = []string{"-90", "-80", "-75", "-70", "-65", "-60", "-55", "-45"}
 var rssiBinEdges = []float64{-85, -80, -75, -70, -65, -60, -55, 0} // client falls in first bin whose edge >= rssi
 
-func (s *Server) handleWifi(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) Wifi(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var d wifiDTO
 	d.RSSILabels = rssiBinLabels

@@ -1,4 +1,4 @@
-package web
+package handler
 
 import (
 	"net/http"
@@ -35,7 +35,7 @@ type topologyDTO struct {
 	} `json:"stats"`
 }
 
-func (s *Server) handleTopology(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) Topology(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	out := topologyDTO{
 		Edge: []topoNode{}, Switches: []topoNode{}, APs: []topoNode{},

@@ -1,4 +1,4 @@
-package web
+package handler
 
 import (
 	"context"
@@ -44,7 +44,7 @@ func TestTrafficTier(t *testing.T) {
 		{[]string{}, "uap"},                    // no data at all: safe default
 	}
 	for _, c := range cases {
-		s := &Server{prom: stubProm(t, c.types)}
+		s := &Handlers{prom: stubProm(t, c.types)}
 		if got := s.trafficTier(context.Background()); got != c.want {
 			t.Errorf("types %v: tier = %q, want %q", c.types, got, c.want)
 		}
@@ -52,7 +52,7 @@ func TestTrafficTier(t *testing.T) {
 }
 
 func TestTrafficTierPromDown(t *testing.T) {
-	s := &Server{prom: query.NewPrometheus("http://127.0.0.1:1")} // nothing listens
+	s := &Handlers{prom: query.NewPrometheus("http://127.0.0.1:1")} // nothing listens
 	if got := s.trafficTier(context.Background()); got != "uap" {
 		t.Errorf("prom unreachable: tier = %q, want uap fallback", got)
 	}
