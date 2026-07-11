@@ -108,10 +108,14 @@ func (s *Store) setThresholds(th thresholds) error {
 }
 
 // recordTransitions diffs the current active alerts against the open (unresolved)
-// history rows: newly-seen fingerprints are inserted as fired, and open rows no
-// longer active are marked resolved. Called on a timer so the timeline reflects
-// real fire/resolve events even when nobody is viewing the page. It returns the
-// alerts that fired and resolved on this tick so the caller can notify.
+// history rows: newly-seen fingerprints are inserted as fired, open rows no
+// longer active are marked resolved, and an open alert whose severity changed
+// (e.g. a subsystem warning worsening to critical) has its stored row updated in
+// place. An escalation to a higher severity is reported as fired so the caller
+// re-notifies on the now-critical channel; a de-escalation updates the row
+// silently. Called on a timer so the timeline reflects real events even when
+// nobody is viewing the page. Returns the alerts that fired and resolved on this
+// tick so the caller can notify.
 func (s *Store) recordTransitions(active []alertDTO) (fired, resolved []alertDTO, err error) {
 	now := time.Now().Unix()
 	current := make(map[string]alertDTO, len(active))
@@ -138,17 +142,31 @@ func (s *Store) recordTransitions(active []alertDTO) (fired, resolved []alertDTO
 	}
 	_ = rows.Close()
 
-	// Fire: active now but not already open.
+	// Fire (new) or escalate (severity changed on an already-open alert).
 	for fp, a := range current {
-		if _, ok := open[fp]; ok {
+		row, isOpen := open[fp]
+		if !isOpen {
+			if _, err := s.db.Exec(
+				`INSERT INTO alert_history (fingerprint, level, rule, target, message, fired_at) VALUES (?, ?, ?, ?, ?, ?)`,
+				fp, a.Level, a.Rule, a.Target, a.Message, now); err != nil {
+				return nil, nil, err
+			}
+			fired = append(fired, a)
 			continue
 		}
-		if _, err := s.db.Exec(
-			`INSERT INTO alert_history (fingerprint, level, rule, target, message, fired_at) VALUES (?, ?, ?, ?, ?, ?)`,
-			fp, a.Level, a.Rule, a.Target, a.Message, now); err != nil {
+		if a.Level == row.detail.Level {
+			continue // unchanged: already recorded, don't re-notify
+		}
+		// Severity changed: keep the same open row (the incident is continuous)
+		// but reflect the new level/message in the timeline.
+		if _, err := s.db.Exec(`UPDATE alert_history SET level = ?, message = ? WHERE id = ?`,
+			a.Level, a.Message, row.id); err != nil {
 			return nil, nil, err
 		}
-		fired = append(fired, a)
+		// Re-notify only when it got worse, so the higher-severity chat learns.
+		if alertRank(a.Level) < alertRank(row.detail.Level) {
+			fired = append(fired, a)
+		}
 	}
 	// Resolve: open but no longer active.
 	for fp, row := range open {
