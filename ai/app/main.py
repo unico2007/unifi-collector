@@ -1,3 +1,4 @@
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -91,9 +92,12 @@ async def summary():
     except Exception as e:  # noqa: BLE001
         return {"summary": f"Loglar oxunmadı: {e}"}
     text = agent._summarize("loki", data)
-    answer = await llm.generate(
-        f"Recent error logs:\n{text}\n\nSummarize briefly in English: how many errors, "
-        f"the most common one, which device/service, and a recommendation.",
-        system="You are the Unico network monitoring assistant. Give a short, concrete summary in English.",
-    )
+    try:
+        answer = await llm.generate(
+            f"Recent error logs:\n{text}\n\nSummarize briefly in English: how many errors, "
+            f"the most common one, which device/service, and a recommendation.",
+            system="You are the Unico network monitoring assistant. Give a short, concrete summary in English.",
+        )
+    except httpx.HTTPError:
+        return {"summary": "AI xülasəsi hazırda əlçatmazdır (model xidməti cavab vermir)."}
     return {"summary": answer.strip()}

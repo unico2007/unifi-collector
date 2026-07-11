@@ -8,6 +8,8 @@ same interface.
 
 from __future__ import annotations
 
+import httpx
+
 from .clients import prom, loki, llm
 from .config import settings
 from .rag import kb
@@ -190,6 +192,24 @@ async def _answer_troubleshoot(question: str, keywords: str, logql: str) -> dict
 
 
 async def chat(question: str) -> dict:
+    """Route and answer a question. Degrades gracefully when the LLM backend
+    (Ollama) is unreachable or times out: the planner and every answer branch
+    call the model, so a single guard here keeps /ai/chat from 500-ing the panel
+    while the metric/log panels keep working. Prom/Loki failures are already
+    handled inside the branches and surface as normal answers, not exceptions."""
+    try:
+        return await _run(question)
+    except httpx.HTTPError as e:
+        return {
+            "answer": "AI köməkçi hazırda əlçatmazdır — model xidməti (Ollama) cavab "
+            "vermir. Bir azdan yenidən cəhd edin. Metrik və log panelləri normal işləyir.",
+            "source": "error",
+            "query": "",
+            "error": str(e),
+        }
+
+
+async def _run(question: str) -> dict:
     # 1) plan / route the question
     plan = await llm.generate_json(f"Sual: {question}", system=PLANNER_SYSTEM)
     source = plan.get("source", "")
