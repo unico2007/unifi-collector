@@ -142,7 +142,14 @@ func (s *Service) TestNotify(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	if err := s.notifier.send(ctx, "✅ Unico test bildirişi — Telegram inteqrasiyası işləyir."); err != nil {
+	// Send the sample through the real alert renderer so the admin sees exactly
+	// how a live alert will look (structure, bold headers, timestamp).
+	sample := alertDTO{
+		Level:   "warning",
+		Rule:    "Test bildirişi",
+		Message: "Telegram inteqrasiyası işləyir. Bu, real alertlərin göndəriləcəyi formatın nümunəsidir — real hadisə deyil.",
+	}
+	if err := s.notifier.send(ctx, firedMessage(sample)); err != nil {
 		respond.JSON(w, http.StatusBadGateway, map[string]any{"enabled": true, "error": err.Error()})
 		return
 	}

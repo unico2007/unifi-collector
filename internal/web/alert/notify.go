@@ -63,7 +63,12 @@ func (n *notifier) sendTo(ctx context.Context, chatID, text string) error {
 		return nil
 	}
 	endpoint := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", n.token)
-	form := url.Values{"chat_id": {chatID}, "text": {text}, "disable_web_page_preview": {"true"}}
+	form := url.Values{
+		"chat_id":                  {chatID},
+		"text":                     {text},
+		"parse_mode":               {"HTML"},
+		"disable_web_page_preview": {"true"},
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return err
@@ -81,22 +86,66 @@ func (n *notifier) sendTo(ctx context.Context, chatID, text string) error {
 	return nil
 }
 
-// notifyTransitions sends one message per fired/resolved alert. Called from the
-// background evaluator; safe on a nil notifier.
-func (n *notifier) notifyTransitions(ctx context.Context, fired, resolved []alertDTO) {
+// notifyTransitions sends one structured message per fired / escalated /
+// resolved alert. Called from the background evaluator; safe on a nil notifier.
+func (n *notifier) notifyTransitions(ctx context.Context, fired, escalated, resolved []alertDTO) {
 	if n == nil {
 		return
 	}
 	for _, a := range fired {
-		icon := "🟠"
-		if a.Level == "critical" {
-			icon = "🔴"
-		}
-		_ = n.sendTo(ctx, n.chatFor(a.Level), fmt.Sprintf("%s Unico alert: %s\n%s", icon, a.Rule, a.Message))
+		_ = n.sendTo(ctx, n.chatFor(a.Level), firedMessage(a))
+	}
+	for _, a := range escalated {
+		// Escalations route to the new (higher) severity's chat, so the critical
+		// channel learns an existing warning just got worse.
+		_ = n.sendTo(ctx, n.chatFor(a.Level), escalatedMessage(a))
 	}
 	for _, a := range resolved {
 		// Route the resolve to the same chat the fire went to, so a critical
 		// alert clears where the team saw it raised.
-		_ = n.sendTo(ctx, n.chatFor(a.Level), fmt.Sprintf("✅ Həll olundu: %s — %s", a.Rule, a.Target))
+		_ = n.sendTo(ctx, n.chatFor(a.Level), resolvedMessage(a))
 	}
+}
+
+// bakuLoc pins message timestamps to Azerbaijan time (UTC+4, no DST since 2016)
+// regardless of the container's TZ, so we don't depend on tzdata being present.
+var bakuLoc = time.FixedZone("AZT", 4*60*60)
+
+// severityLabel maps an internal level to the Azerbaijani word shown in bold.
+func severityLabel(level string) (icon, word string) {
+	if level == "critical" {
+		return "🔴", "KRİTİK"
+	}
+	return "🟠", "XƏBƏRDARLIQ"
+}
+
+// stamp formats "now" as a Baku-local wall-clock string for the message footer.
+func stamp() string { return time.Now().In(bakuLoc).Format("02.01.2006 15:04") }
+
+// esc escapes the three characters Telegram's HTML parse mode is sensitive to,
+// so device names or messages containing <, > or & never break the markup.
+func esc(s string) string {
+	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;")
+	return r.Replace(s)
+}
+
+// firedMessage renders a newly raised alert.
+func firedMessage(a alertDTO) string {
+	icon, word := severityLabel(a.Level)
+	return fmt.Sprintf("%s <b>%s</b>\n<b>%s</b>\n\n%s\n🕐 %s",
+		icon, word, esc(a.Rule), esc(a.Message), stamp())
+}
+
+// escalatedMessage renders an already-open alert that just worsened in severity.
+func escalatedMessage(a alertDTO) string {
+	icon, word := severityLabel(a.Level)
+	return fmt.Sprintf("%s <b>ESKALASİYA → %s</b>\n<b>%s</b>\n\n%s\n🕐 %s",
+		icon, word, esc(a.Rule), esc(a.Message), stamp())
+}
+
+// resolvedMessage renders an alert that has cleared. It shows the target rather
+// than the last reading, which is no longer meaningful once resolved.
+func resolvedMessage(a alertDTO) string {
+	return fmt.Sprintf("✅ <b>HƏLL OLUNDU</b>\n<b>%s</b>\n\n%s\n🕐 %s",
+		esc(a.Rule), esc(a.Target), stamp())
 }

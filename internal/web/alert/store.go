@@ -111,12 +111,12 @@ func (s *Store) setThresholds(th thresholds) error {
 // history rows: newly-seen fingerprints are inserted as fired, open rows no
 // longer active are marked resolved, and an open alert whose severity changed
 // (e.g. a subsystem warning worsening to critical) has its stored row updated in
-// place. An escalation to a higher severity is reported as fired so the caller
-// re-notifies on the now-critical channel; a de-escalation updates the row
-// silently. Called on a timer so the timeline reflects real events even when
-// nobody is viewing the page. Returns the alerts that fired and resolved on this
-// tick so the caller can notify.
-func (s *Store) recordTransitions(active []alertDTO) (fired, resolved []alertDTO, err error) {
+// place. An escalation to a higher severity is returned in its own slice so the
+// caller can label it distinctly and re-notify on the now-critical channel; a
+// de-escalation updates the row silently. Called on a timer so the timeline
+// reflects real events even when nobody is viewing the page. Returns the alerts
+// that fired, escalated and resolved on this tick so the caller can notify.
+func (s *Store) recordTransitions(active []alertDTO) (fired, escalated, resolved []alertDTO, err error) {
 	now := time.Now().Unix()
 	current := make(map[string]alertDTO, len(active))
 	for _, a := range active {
@@ -130,7 +130,7 @@ func (s *Store) recordTransitions(active []alertDTO) (fired, resolved []alertDTO
 	open := map[string]openRow{} // fingerprint -> row
 	rows, err := s.db.Query(`SELECT id, fingerprint, level, rule, target, message FROM alert_history WHERE resolved_at IS NULL`)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	for rows.Next() {
 		var id int64
@@ -149,7 +149,7 @@ func (s *Store) recordTransitions(active []alertDTO) (fired, resolved []alertDTO
 			if _, err := s.db.Exec(
 				`INSERT INTO alert_history (fingerprint, level, rule, target, message, fired_at) VALUES (?, ?, ?, ?, ?, ?)`,
 				fp, a.Level, a.Rule, a.Target, a.Message, now); err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 			fired = append(fired, a)
 			continue
@@ -161,11 +161,11 @@ func (s *Store) recordTransitions(active []alertDTO) (fired, resolved []alertDTO
 		// but reflect the new level/message in the timeline.
 		if _, err := s.db.Exec(`UPDATE alert_history SET level = ?, message = ? WHERE id = ?`,
 			a.Level, a.Message, row.id); err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		// Re-notify only when it got worse, so the higher-severity chat learns.
 		if alertRank(a.Level) < alertRank(row.detail.Level) {
-			fired = append(fired, a)
+			escalated = append(escalated, a)
 		}
 	}
 	// Resolve: open but no longer active.
@@ -174,11 +174,11 @@ func (s *Store) recordTransitions(active []alertDTO) (fired, resolved []alertDTO
 			continue
 		}
 		if _, err := s.db.Exec(`UPDATE alert_history SET resolved_at = ? WHERE id = ?`, now, row.id); err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		resolved = append(resolved, row.detail)
 	}
-	return fired, resolved, nil
+	return fired, escalated, resolved, nil
 }
 
 // history returns the most recent alert spans (active first via NULL resolved_at

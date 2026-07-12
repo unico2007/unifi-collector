@@ -34,7 +34,7 @@ func (e *Evaluator) Run(ctx context.Context) {
 			return
 		}
 		active := e.svc.activeAlerts(ectx, e.svc.store.thresholds())
-		fired, resolved, err := e.svc.store.recordTransitions(active)
+		fired, escalated, resolved, err := e.svc.store.recordTransitions(active)
 		if err != nil {
 			e.log.Warn("alert history record failed", zap.Error(err))
 			return
@@ -44,7 +44,7 @@ func (e *Evaluator) Run(ctx context.Context) {
 		// don't re-fire (open rows persist in SQLite), so this only mutes genuine
 		// pre-existing state at first boot.
 		if !first {
-			e.svc.notifier.notifyTransitions(ectx, fired, resolved)
+			e.svc.notifier.notifyTransitions(ectx, fired, escalated, resolved)
 		}
 		first = false
 	}

@@ -23,32 +23,38 @@ func sub(level, msg string) alertDTO {
 	return alertDTO{Level: level, Rule: "Subsystem problemi", Target: "wlan", Message: msg, Value: msg}
 }
 
-func rec(t *testing.T, s *Store, active ...alertDTO) (fired, resolved []alertDTO) {
+func rec(t *testing.T, s *Store, active ...alertDTO) (fired, escalated, resolved []alertDTO) {
 	t.Helper()
-	f, r, err := s.recordTransitions(active)
+	f, e, r, err := s.recordTransitions(active)
 	if err != nil {
 		t.Fatalf("recordTransitions: %v", err)
 	}
-	return f, r
+	return f, e, r
 }
 
 func TestRecordTransitions_Escalation(t *testing.T) {
 	s := testStore(t)
 
 	// 1. First seen as a warning: one fired warning, one open row.
-	fired, resolved := rec(t, s, sub("warning", "xəbərdarlıq"))
+	fired, escalated, resolved := rec(t, s, sub("warning", "xəbərdarlıq"))
 	if len(fired) != 1 || fired[0].Level != "warning" {
 		t.Fatalf("first tick: fired = %+v, want one warning", fired)
+	}
+	if len(escalated) != 0 {
+		t.Fatalf("first tick: escalated = %+v, want none", escalated)
 	}
 	if len(resolved) != 0 {
 		t.Fatalf("first tick: resolved = %+v, want none", resolved)
 	}
 
-	// 2. Same rule+target worsens to critical: must re-notify as critical, must
-	//    NOT open a second row, must NOT resolve anything.
-	fired, resolved = rec(t, s, sub("critical", "xəta"))
-	if len(fired) != 1 || fired[0].Level != "critical" {
-		t.Fatalf("escalation: fired = %+v, want one critical", fired)
+	// 2. Same rule+target worsens to critical: must re-notify as an escalation
+	//    (not a fresh fire), must NOT open a second row, must NOT resolve anything.
+	fired, escalated, resolved = rec(t, s, sub("critical", "xəta"))
+	if len(fired) != 0 {
+		t.Fatalf("escalation: fired = %+v, want none (should be an escalation)", fired)
+	}
+	if len(escalated) != 1 || escalated[0].Level != "critical" {
+		t.Fatalf("escalation: escalated = %+v, want one critical", escalated)
 	}
 	if len(resolved) != 0 {
 		t.Fatalf("escalation: resolved = %+v, want none", resolved)
@@ -68,9 +74,12 @@ func TestRecordTransitions_DeEscalationIsSilent(t *testing.T) {
 
 	// Critical eases back to warning: the row must reflect warning, but we must
 	// not page anyone for a downgrade.
-	fired, resolved := rec(t, s, sub("warning", "xəbərdarlıq"))
+	fired, escalated, resolved := rec(t, s, sub("warning", "xəbərdarlıq"))
 	if len(fired) != 0 {
 		t.Fatalf("de-escalation must not notify, fired = %+v", fired)
+	}
+	if len(escalated) != 0 {
+		t.Fatalf("de-escalation must not escalate, escalated = %+v", escalated)
 	}
 	if len(resolved) != 0 {
 		t.Fatalf("de-escalation must not resolve, resolved = %+v", resolved)
@@ -85,12 +94,12 @@ func TestRecordTransitions_UnchangedAndResolve(t *testing.T) {
 	rec(t, s, sub("warning", "xəbərdarlıq"))
 
 	// Same level again: no new fire.
-	if fired, _ := rec(t, s, sub("warning", "xəbərdarlıq")); len(fired) != 0 {
+	if fired, _, _ := rec(t, s, sub("warning", "xəbərdarlıq")); len(fired) != 0 {
 		t.Fatalf("unchanged tick must not re-fire, fired = %+v", fired)
 	}
 
 	// Now gone: resolve fires once.
-	fired, resolved := rec(t, s)
+	fired, _, resolved := rec(t, s)
 	if len(fired) != 0 {
 		t.Fatalf("resolve tick: fired = %+v, want none", fired)
 	}
