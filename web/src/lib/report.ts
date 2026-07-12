@@ -1,33 +1,11 @@
-// Client-side report helpers: CSV download + a printable PDF-ready report.
-// Everything is generated in the browser from the same /api data the pages use,
-// so no extra backend endpoints are needed.
-
-function csvEsc(v: unknown): string {
-  const s = v === null || v === undefined ? "" : String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
+// Client-side report helpers: a printable PDF-ready report (spreadsheet export
+// lives in xlsx.ts). Everything is generated in the browser from the same /api
+// data the pages use, so no extra backend endpoints are needed.
 
 function htmlEsc(v: unknown): string {
   return String(v ?? "").replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string,
   );
-}
-
-export function toCSV(headers: string[], rows: (string | number)[][]): string {
-  return [headers, ...rows].map((r) => r.map(csvEsc).join(",")).join("\r\n");
-}
-
-export function download(filename: string, content: string, mime = "text/csv") {
-  // Prepend a UTF-8 BOM so Excel renders Azerbaijani characters correctly.
-  const blob = new Blob(["﻿", content], { type: `${mime};charset=utf-8` });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export function stamp(): string {
@@ -61,19 +39,24 @@ export function printReport(title: string, kpis: { label: string; value: string 
   const doc = `<!doctype html><html lang="az"><head><meta charset="utf-8"><title>${htmlEsc(title)}</title>
     <style>
       body{font-family:-apple-system,Segoe UI,system-ui,sans-serif;color:#0f172a;margin:32px;}
-      h1{font-size:22px;margin:0 0 4px;}
-      .meta{color:#64748b;font-size:13px;margin-bottom:20px;}
+      .band{background:#1466d6;color:#fff;border-radius:12px;padding:16px 20px;margin-bottom:8px;
+        display:flex;align-items:baseline;gap:12px;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+      .brandmark{font-size:14px;font-weight:800;letter-spacing:.14em;}
+      h1{font-size:20px;margin:0;font-weight:600;}
+      .meta{color:#64748b;font-size:13px;margin-bottom:20px;padding-left:4px;}
       .kpis{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:24px;}
-      .kpi{border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;min-width:120px;}
-      .kl{font-size:12px;color:#64748b;} .kv{font-size:22px;font-weight:700;margin-top:2px;}
-      h2{font-size:15px;margin:22px 0 8px;}
+      .kpi{border:1px solid #cddef5;border-radius:10px;padding:12px 16px;min-width:120px;background:#eaf1fb;
+        -webkit-print-color-adjust:exact;print-color-adjust:exact;}
+      .kl{font-size:12px;color:#64748b;} .kv{font-size:22px;font-weight:700;margin-top:2px;color:#0e4796;}
+      h2{font-size:15px;margin:22px 0 8px;color:#0e4796;}
       table{border-collapse:collapse;width:100%;font-size:12px;margin-bottom:8px;}
       th,td{border:1px solid #e2e8f0;padding:6px 9px;text-align:left;}
-      th{background:#f6f8fc;text-transform:uppercase;font-size:10.5px;letter-spacing:.05em;color:#64748b;}
+      th{background:#0e4796;color:#fff;text-transform:uppercase;font-size:10.5px;letter-spacing:.05em;
+        -webkit-print-color-adjust:exact;print-color-adjust:exact;}
       @media print{@page{margin:14mm;}}
     </style></head><body>
-    <h1>${htmlEsc(title)}</h1>
-    <div class="meta">Unico Şəbəkə Monitorinq · ${htmlEsc(new Date().toLocaleString("az"))}</div>
+    <div class="band"><span class="brandmark">UNICO</span><h1>${htmlEsc(title)}</h1></div>
+    <div class="meta">Unico Şəbəkə Monitorinqi · ${htmlEsc(new Date().toLocaleString("az"))} · unico.az</div>
     <div class="kpis">${kpiHtml}</div>
     ${tableHtml}
     </body></html>`;
