@@ -76,31 +76,28 @@ PLANNER_EXAMPLES = (
 
 PLANNER_SYSTEM = PLANNER_SYSTEM + PLANNER_EXAMPLES
 
-# Answers are generated in English: local small models (qwen2.5:7b on a 6 GB GPU)
-# are far more fluent and accurate in English than in Azerbaijani, and network
-# terminology is English anyway. Users can still ask in Azerbaijani — the model
-# understands AZ input fine; only the generated answer is English.
-ANSWER_SYSTEM = """You are the Unico network monitoring assistant. Answer the user's
-question in clear, concise English, using ONLY the provided query result. Do not
+# Answer language. Auto by default: Azerbaijani when the cloud model (NVIDIA Qwen3)
+# is active — it handles AZ well — else English, because the local 7B is weak at
+# Azerbaijani (the reason answers were English before). AI_ANSWER_LANG overrides.
+# Users ask in AZ either way; the planner below stays English/JSON for routing.
+_LANG = settings.answer_lang or ("Azerbaijani" if settings.nvidia_api_key else "English")
+
+ANSWER_SYSTEM = f"""You are the Unico network monitoring assistant. Answer the user's
+question in clear, concise {_LANG}, using ONLY the provided query result. Do not
 fabricate numbers. If the result is empty, say so plainly and suggest what to check.
 Keep it to 1-3 sentences; use short bullets only if genuinely helpful. Keep technical
 terms as-is (CPU, RAM, IP, MAC, offline, online, AP, switch, gateway, VLAN, RSSI,
-dBm, Mbps, uplink).
+dBm, Mbps, uplink)."""
 
-Example:
-Question: How many devices are offline?
-Result: 3 devices offline.
-Answer: 3 devices are currently offline. Check their power and uplink connections."""
+KNOWLEDGE_SYSTEM = f"""You are the Unico network monitoring assistant. Answer in clear,
+concise {_LANG}, based ONLY on the "Knowledge" text below (it may itself be written in
+Azerbaijani — read it and answer in {_LANG}). Do not invent anything not in it. If
+there is no relevant information, say so and suggest what to check. Number the steps if
+there are any. Cite the source at the end (e.g. source: runbooks.md)."""
 
-KNOWLEDGE_SYSTEM = """You are the Unico network monitoring assistant. Answer in clear,
-concise English, based ONLY on the "Knowledge" text below. The knowledge may be
-written in Azerbaijani — read it and answer in English. Do not invent anything not
-in it. If there is no relevant information, say so and suggest what to check. Number
-the steps if there are any. Cite the source at the end (e.g. source: runbooks.md)."""
-
-TROUBLESHOOT_SYSTEM = """You are the Unico network monitoring assistant helping to fix a
+TROUBLESHOOT_SYSTEM = f"""You are the Unico network monitoring assistant helping to fix a
 problem. You get (a) runbook/knowledge text (may be in Azerbaijani) and (b) recent live
-log lines from the network. Answer in clear, concise English:
+log lines from the network. Answer in clear, concise {_LANG}:
 1. First, one line on what the live logs currently show (or say the logs show nothing
    relevant to this problem).
 2. Then the concrete fix steps from the runbook, numbered.

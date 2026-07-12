@@ -15,6 +15,13 @@ services:
       AI_LOKI_URL: "http://loki:3100"
       AI_OLLAMA_URL: "http://host.docker.internal:11434"
       AI_OLLAMA_MODEL: "${AI_MODEL:-qwen2.5:7b}"
+      # Cloud LLM (NVIDIA NIM). Set NVIDIA_API_KEY in .env to make Qwen3 the
+      # primary model with local Ollama as automatic fallback; leave it empty for
+      # local-only. Never commit the key.
+      AI_NVIDIA_API_KEY: "${NVIDIA_API_KEY:-}"
+      AI_NVIDIA_MODEL: "${NVIDIA_MODEL:-qwen/qwen3.5-397b-a17b}"
+      # Empty = auto (Azerbaijani with the cloud model, English local-only).
+      AI_ANSWER_LANG: "${AI_ANSWER_LANG:-}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

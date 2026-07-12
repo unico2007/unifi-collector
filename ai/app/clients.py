@@ -92,8 +92,81 @@ class Ollama:
             return r.json().get("embeddings", [])
 
 
+class OpenAICompat:
+    """Chat client for any OpenAI-compatible endpoint. Used for NVIDIA NIM
+    (base_url=https://integrate.api.nvidia.com/v1). Mirrors the Ollama method
+    surface (generate / generate_json) so agent.py is provider-agnostic."""
+
+    def __init__(self, base_url: str, api_key: str, model: str, timeout: float):
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.model = model
+        self.timeout = timeout
+
+    async def generate(self, prompt: str, system: str = "", fmt: str | None = None) -> str:
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+        payload: dict = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": 0.1,
+            "max_tokens": 1024,
+            "stream": False,
+        }
+        if fmt == "json":
+            # Force clean JSON so the planner parse never trips on prose/reasoning.
+            payload["response_format"] = {"type": "json_object"}
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        async with httpx.AsyncClient(timeout=self.timeout) as c:
+            r = await c.post(f"{self.base_url}/chat/completions", json=payload, headers=headers)
+            r.raise_for_status()
+            data = r.json()
+            return data["choices"][0]["message"]["content"] or ""
+
+    async def generate_json(self, prompt: str, system: str = "") -> dict:
+        raw = await self.generate(prompt, system, fmt="json")
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+
+
+class FallbackLLM:
+    """Try the primary model (cloud), fall back to the local one on any transport
+    error (API down / timeout / HTTP error), so the assistant keeps working even
+    when the internet or NVIDIA is unavailable."""
+
+    def __init__(self, primary, fallback):
+        self.primary = primary
+        self.fallback = fallback
+
+    async def generate(self, prompt: str, system: str = "", fmt: str | None = None) -> str:
+        try:
+            return await self.primary.generate(prompt, system, fmt)
+        except httpx.HTTPError:
+            return await self.fallback.generate(prompt, system, fmt)
+
+    async def generate_json(self, prompt: str, system: str = "") -> dict:
+        try:
+            return await self.primary.generate_json(prompt, system)
+        except httpx.HTTPError:
+            return await self.fallback.generate_json(prompt, system)
+
+
 prom = Prometheus(settings.prometheus_url)
 loki = Loki(settings.loki_url)
-llm = Ollama(settings.ollama_url, settings.ollama_model)
-# Separate handle for embeddings (same Ollama, dedicated small model).
+
+# Local Ollama is always constructed (it is also the fallback + embedder host).
+_ollama = Ollama(settings.ollama_url, settings.ollama_model)
+if settings.nvidia_api_key:
+    _nim = OpenAICompat(
+        settings.nvidia_base_url, settings.nvidia_api_key, settings.nvidia_model, settings.nvidia_timeout
+    )
+    llm = FallbackLLM(primary=_nim, fallback=_ollama)
+else:
+    llm = _ollama
+
+# Embeddings stay local (nomic-embed-text): cheap, keeps RAG source text on-box.
 embedder = Ollama(settings.ollama_url, settings.embed_model)

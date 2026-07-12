@@ -15,6 +15,22 @@ class Settings(BaseSettings):
     # qwen2.5:7b fits a 6 GB GPU and is much better at Azerbaijani + PromQL/JSON.
     # Fall back to llama3.2:3b on a smaller GPU via AI_OLLAMA_MODEL.
     ollama_model: str = "qwen2.5:7b"
+
+    # Cloud LLM via NVIDIA NIM (OpenAI-compatible, free tier). When
+    # AI_NVIDIA_API_KEY is set, it becomes the PRIMARY model and the local Ollama
+    # model above stays as an automatic fallback if the API is unreachable. Empty
+    # key => local-only (unchanged behaviour). A big Qwen3 handles Azerbaijani far
+    # better than the local 7B, so answers can be in Azerbaijani (see answer_lang).
+    nvidia_api_key: str = ""
+    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
+    nvidia_model: str = "qwen/qwen3.5-397b-a17b"
+    nvidia_timeout: float = 60.0
+
+    # Language the assistant answers in. Empty = auto: Azerbaijani when the cloud
+    # model is active (nvidia_api_key set), else English (the local 7B is weak at
+    # Azerbaijani). Set AI_ANSWER_LANG explicitly to override. Planner stays
+    # English/JSON regardless.
+    answer_lang: str = ""
     # Local embedding model for RAG (Phase 3). Pull once on the host:
     #   ollama pull nomic-embed-text
     # 768-dim, ~275 MB, fast — coexists with qwen2.5 on the 6 GB GPU.
