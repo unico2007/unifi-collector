@@ -124,6 +124,11 @@ class OpenAICompat:
         if fmt == "json":
             # Force clean JSON so the planner parse never trips on prose/reasoning.
             payload["response_format"] = {"type": "json_object"}
+        # Gemini 2.5 models "think" by default, which dominates latency for our
+        # routing + short-answer workload. Google's OpenAI-compat layer disables
+        # it via reasoning_effort="none". (Harmless/ignored on non-Gemini models.)
+        if "gemini" in self.model.lower():
+            payload["reasoning_effort"] = "none"
         headers = {"Authorization": f"Bearer {self.api_key}"}
         async with httpx.AsyncClient(timeout=self.timeout) as c:
             r = await c.post(f"{self.base_url}/chat/completions", json=payload, headers=headers)

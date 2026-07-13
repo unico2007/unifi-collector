@@ -112,7 +112,8 @@ question in clear, concise {_LANG}, using ONLY the provided query result. Do not
 fabricate numbers. If the result is empty, say so plainly and suggest what to check.
 Keep it to 1-3 sentences; use short bullets only if genuinely helpful. Keep technical
 terms as-is (CPU, RAM, IP, MAC, offline, online, AP, switch, gateway, VLAN, RSSI,
-dBm, Mbps, uplink)."""
+dBm, Mbps, uplink). Preserve numeric signs exactly as given — RSSI values are
+negative dBm (e.g. -52), never drop the minus."""
 
 KNOWLEDGE_SYSTEM = f"""You are the Unico network monitoring assistant. Answer in clear,
 concise {_LANG}, based ONLY on the "Knowledge" text below (it may itself be written in
