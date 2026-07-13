@@ -3,7 +3,7 @@ import { api, Client } from "../lib/api";
 import { usePolling } from "../lib/refresh";
 import { Accessor, bytesToNum, rateToNum, SortTh, useSort } from "../components/sortable";
 
-const clientCols = ["Ad / MAC", "AP", "VLAN", "Siqnal", "Endirmə", "Yükləmə", "Data", "IP", "Qoşulma vaxtı"];
+const clientCols = ["Ad / MAC", "AP", "VLAN", "Siqnal", "Endirmə", "Yükləmə", "Data (sessiya)", "IP", "Qoşulma vaxtı"];
 const clientAccessors: Accessor<Client>[] = [
   (c) => c.name || c.mac,
   (c) => c.ap,
