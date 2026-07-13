@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import httpx
 from .config import settings
 
@@ -107,7 +108,12 @@ class OpenAICompat:
         messages = []
         if system:
             messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
+        # Qwen3 "thinking" models spend most of the latency emitting a long
+        # chain-of-thought before the answer. Routing + short factual answers here
+        # need no visible reasoning, so use Qwen3's documented soft switch
+        # `/no_think` to disable it — a big speed-up. Harmless text otherwise.
+        user = prompt + " /no_think" if "qwen3" in self.model.lower() else prompt
+        messages.append({"role": "user", "content": user})
         payload: dict = {
             "model": self.model,
             "messages": messages,
@@ -123,7 +129,9 @@ class OpenAICompat:
             r = await c.post(f"{self.base_url}/chat/completions", json=payload, headers=headers)
             r.raise_for_status()
             data = r.json()
-            return data["choices"][0]["message"]["content"] or ""
+            content = data["choices"][0]["message"]["content"] or ""
+            # Strip any residual (usually empty) <think>…</think> block /no_think leaves.
+            return re.sub(r"^\s*<think>.*?</think>\s*", "", content, flags=re.DOTALL)
 
     async def generate_json(self, prompt: str, system: str = "") -> dict:
         raw = await self.generate(prompt, system, fmt="json")

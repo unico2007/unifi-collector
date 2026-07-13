@@ -74,6 +74,12 @@ Rules:
   NOT a person's name. If the user asks about "<person>'s phone", still build the
   regex from the words they gave; if nothing matches, the answer will say so.
 - For a CLIENT's "status": query unifi_client_rssi (presence = connected, value = signal).
+- CLIENT vs DEVICE: clients are end-user gear (phones/laptops: "iPhone", "Galaxy-A50",
+  "DESKTOP-…") → unifi_client_*. DEVICES are the network hardware (APs/switches/gateways,
+  often named like "4.3.Vadim-AC-Lite", "…Nano HD", "…-AC-Lite", "…U7LT") → unifi_device_*.
+  If the named thing looks like an AP/switch/gateway, use the device metrics. For
+  "how much data/traffic through <device>" use
+  rate(unifi_device_rx_bytes{{name=~"(?i).*TERM.*"}}[5m])+rate(unifi_device_tx_bytes{{name=~"(?i).*TERM.*"}}[5m]).
 """.replace("{max}", "24h")
 
 # Few-shot examples kept as a plain (non-f) string so the JSON braces don't need
@@ -145,6 +151,47 @@ def _metric_base(query: str) -> str | None:
 
 def _is_empty_prom(data: dict) -> bool:
     return not data.get("data", {}).get("result", [])
+
+
+def _name_term(query: str) -> str:
+    """Pull the searched name out of a name filter, e.g. name=~"(?i).*vadim.*" -> "vadim"."""
+    m = re.search(r'name=~?"([^"]*)"', query)
+    if not m:
+        return ""
+    raw = m.group(1)
+    raw = re.sub(r"\(\?i\)|\.\*|\\", "", raw)  # strip regex noise
+    return raw.strip().lower()
+
+
+async def _prom_names(metric: str) -> list[str]:
+    try:
+        d = await prom.query(metric)
+        return sorted({s.get("metric", {}).get("name", "") for s in d.get("data", {}).get("result", [])} - {""})
+    except Exception:  # noqa: BLE001
+        return []
+
+
+async def _name_hint(query: str) -> str:
+    """Build a helpful note for an empty named lookup: if the term is actually a
+    device (or vice-versa), point there; otherwise list the names that exist."""
+    term = _name_term(query)
+    clients = await _prom_names("unifi_client_rssi")
+    devices = await _prom_names("unifi_device_up")
+    looked_client = "unifi_client" in query
+    # The pool the user probably meant is the OTHER one if the term matches there.
+    dev_hits = [n for n in devices if term and term in n.lower()]
+    cli_hits = [n for n in clients if term and term in n.lower()]
+    if looked_client and dev_hits:
+        return ("\n\n(Bu ad KLİENT deyil — CİHAZ(lar)a uyğun gəlir: "
+                + ", ".join(dev_hits[:10]) + ". Cihaz haqqında soruşun, məs. onun CPU-su/trafiki/statusu.)")
+    if not looked_client and cli_hits:
+        return ("\n\n(Bu ad CİHAZ deyil — KLİENT(lər)ə uyğun gəlir: "
+                + ", ".join(cli_hits[:10]) + ".)")
+    pool = clients if looked_client else devices
+    if pool:
+        label = "klient" if looked_client else "cihaz"
+        return (f"\n\n(Bu ada uyğun {label} yoxdur. Mövcud {label} adları: " + ", ".join(pool[:25]) + ")")
+    return ""
 
 
 def _summarize(source: str, data: dict, limit: int = 40) -> str:
@@ -264,23 +311,13 @@ async def _run(question: str) -> dict:
 
     result_text = _summarize(source, data)
 
-    # Named lookup that matched nothing: instead of a bare "not found", fetch the
-    # names that DO exist for this metric so the answer can suggest them. This is
-    # the common "Zeynalın iphone-u" case — the stored names are hostnames
-    # ("iPhone", "Galaxy-A50"), never a person, so an exact/near miss is expected.
+    # Named lookup that matched nothing: don't dead-end with "not found". The user
+    # may have named a CLIENT while it is actually a DEVICE (e.g. asking about
+    # "vadim" — really the AP "4.3.Vadim-AC-Lite"), or typed a person's name that
+    # simply isn't in the data. Cross-check both client and device names for the
+    # term and hand the answerer a concrete pointer.
     if source == "prometheus" and _is_empty_prom(data) and ("name=" in query or "name=~" in query):
-        base = _metric_base(query)
-        if base:
-            try:
-                alt = await prom.query(base)
-                names = sorted({
-                    s.get("metric", {}).get("name", "")
-                    for s in alt.get("data", {}).get("result", [])
-                } - {""})
-                if names:
-                    result_text += "\n\n(Bu ada uyğun nəticə yoxdur. Bu metrikada mövcud adlar: " + ", ".join(names[:25]) + ")"
-            except Exception:  # noqa: BLE001
-                pass
+        result_text += await _name_hint(query)
 
     # 3) answer from the result
     answer = await llm.generate(
