@@ -48,15 +48,30 @@ func (e *Evaluator) Run(ctx context.Context) {
 		}
 		first = false
 	}
+	// prune keeps the history table bounded (resolved spans older than 90 days,
+	// hard cap 5000 resolved rows). Runs at startup and once a day.
+	prune := func() {
+		n, err := e.svc.store.pruneHistory(90*24*time.Hour, 5000)
+		if err != nil {
+			e.log.Warn("alert history prune failed", zap.Error(err))
+		} else if n > 0 {
+			e.log.Info("alert history pruned", zap.Int64("removed", n))
+		}
+	}
 	evaluate() // once at startup so history starts immediately
+	prune()
 	ticker := time.NewTicker(interval)
+	pruneTicker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
+	defer pruneTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			evaluate()
+		case <-pruneTicker.C:
+			prune()
 		}
 	}
 }

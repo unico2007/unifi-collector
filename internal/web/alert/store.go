@@ -181,6 +181,29 @@ func (s *Store) recordTransitions(active []alertDTO) (fired, escalated, resolved
 	return fired, escalated, resolved, nil
 }
 
+// pruneHistory bounds the alert_history table so it can't grow without limit on
+// the web-data volume (writes are unbounded; the history() read only ever shows
+// 500). It deletes resolved spans older than retain, then — as a hard safety cap
+// — trims the oldest resolved rows beyond maxRows. Open (unresolved) alerts are
+// never touched, so an incident that has been active for a long time is kept.
+// Returns the number of rows removed.
+func (s *Store) pruneHistory(retain time.Duration, maxRows int) (int64, error) {
+	cutoff := time.Now().Add(-retain).Unix()
+	res, err := s.db.Exec(`DELETE FROM alert_history WHERE resolved_at IS NOT NULL AND resolved_at < ?`, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	res2, err := s.db.Exec(`DELETE FROM alert_history WHERE resolved_at IS NOT NULL AND id NOT IN (
+		SELECT id FROM alert_history WHERE resolved_at IS NOT NULL ORDER BY fired_at DESC LIMIT ?
+	)`, maxRows)
+	if err != nil {
+		return n, err
+	}
+	n2, _ := res2.RowsAffected()
+	return n + n2, nil
+}
+
 // history returns the most recent alert spans (active first via NULL resolved_at
 // sorting high, then newest fired first).
 func (s *Store) history(limit int) []historyRow {
