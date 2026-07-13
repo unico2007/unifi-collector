@@ -63,6 +63,19 @@ function AiInsightsPanel() {
 // Compact "systems operational" strip: one glance says whether anything needs
 // attention, with direct links to the offending pages.
 function StatusStrip({ d }: { d: Overview }) {
+  // Monitoring itself is down: don't paint a reassuring green/amber summary from
+  // numbers we couldn't actually fetch — say so plainly.
+  if (d.degraded) {
+    return (
+      <div className="card px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 border-l-4 border-l-red-500">
+        <span className="w-2 h-2 rounded-full bg-red-500" />
+        <span className="text-sm font-medium text-red-700">
+          Monitorinq əlçatmazdır — Prometheus cavab vermir. Göstərilən rəqəmlər etibarlı deyil.
+        </span>
+      </div>
+    );
+  }
+
   const problems: { text: string; to: string }[] = [];
   if (d.devices.offline > 0) problems.push({ text: `${d.devices.offline} cihaz offline`, to: "/devices" });
   if (d.alerts > 0) problems.push({ text: `${d.alerts} aktiv alert`, to: "/alerts" });
@@ -222,7 +235,7 @@ export default function OverviewPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Cihazlar" value={d.devices.total} sub={`${d.devices.online} online · ${d.devices.offline} offline`} tone="brand" to="/devices" spark={d.deviceSeries} icon={<SvgIcon d="M3 4h18v6H3zM3 14h18v6H3zM7 7h.01M7 17h.01" />} />
         <StatCard label="Klientlər" value={d.clients} sub="qoşulu" tone="slate" to="/clients" spark={d.clientSeries} delta={seriesDelta(d.clientSeries)} deltaLabel={deltaLabel} icon={<SvgIcon d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />} />
-        <StatCard label="Sağlamlıq" value={`${d.health}%`} sub="cihazların online payı" tone={d.health >= 90 ? "green" : d.health >= 70 ? "amber" : "red"} to="/devices" spark={d.healthSeries} icon={<SvgIcon d="M22 12h-4l-3 9L9 3l-3 9H2" />} />
+        <StatCard label="Sağlamlıq" value={d.health < 0 ? "—" : `${d.health}%`} sub={d.health < 0 ? "məlumat yoxdur" : "cihazların online payı"} tone={d.health < 0 ? "slate" : d.health >= 90 ? "green" : d.health >= 70 ? "amber" : "red"} to="/devices" spark={d.healthSeries} icon={<SvgIcon d="M22 12h-4l-3 9L9 3l-3 9H2" />} />
         <StatCard label="Xəbərdarlıqlar" value={d.alerts} sub="aktiv" tone={d.alerts ? "amber" : "green"} to="/alerts" icon={<SvgIcon d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0" />} />
       </div>
 

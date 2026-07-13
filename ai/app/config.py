@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     # 0 disables the background refresh. Default 30 min.
     rag_reindex_seconds: int = 1800
 
+    # CORS. The service is reached server-to-server by the BFF (no browser
+    # origin), so the default is "no cross-origin browser access". Set
+    # AI_CORS_ORIGINS to a comma-separated allowlist only if a browser must call
+    # it directly. Never use "*" — it let any internet page script this API.
+    cors_origins: str = ""
+
     # Guardrails for LLM-generated queries.
     max_range: str = "24h"      # cap the time range the agent may query
     query_timeout: float = 15.0

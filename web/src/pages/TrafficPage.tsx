@@ -33,8 +33,8 @@ export default function TrafficPage() {
         <Card title="Ən çox trafik istifadə edənlər">
           <TopBars rows={t.topTalkers} />
         </Card>
-        <Card title="AP-yə görə trafik" subtitle="GB">
-          <TopBars rows={t.perAp} unit=" GB" />
+        <Card title="AP-yə görə trafik" subtitle="Mbps (cari)">
+          <TopBars rows={t.perAp} unit=" Mbps" />
         </Card>
       </div>
     </div>

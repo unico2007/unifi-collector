@@ -42,9 +42,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Unico AI service", version="0.1.0", lifespan=lifespan)
-app.add_middleware(
-    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
-)
+# Locked down by default (no browser origin — the BFF calls this server-to-server).
+# AI_CORS_ORIGINS can add an explicit allowlist; "*" is intentionally not honored.
+_cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip() and o.strip() != "*"]
+if _cors_origins:
+    app.add_middleware(
+        CORSMiddleware, allow_origins=_cors_origins, allow_methods=["*"], allow_headers=["*"]
+    )
 
 
 class ChatIn(BaseModel):

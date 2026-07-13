@@ -83,7 +83,13 @@ func run() error {
 		TelegramChatID:         *tgChat,
 		TelegramCriticalChatID: *tgCritChat,
 		ReadTimeout:            15 * time.Second,
-		WriteTimeout:           30 * time.Second,
+		// The /api/ai/* proxy can legitimately take up to ~2 min: NVIDIA NIM
+		// (60s) then the local Ollama fallback (CPU 7B easily >30s). A 30s
+		// WriteTimeout cut those off mid-flight, so the built-in fallback chain
+		// never actually returned and the frontend showed a mock answer. 150s
+		// covers the full chain. Go has no per-route write timeout, and this is a
+		// LAN-internal tool, so a generous server-wide value is the pragmatic fix.
+		WriteTimeout:           150 * time.Second,
 	}, users, log)
 	if err != nil {
 		return err

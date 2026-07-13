@@ -8,8 +8,10 @@ services:
     image: unifi-collector-ai:local
     container_name: ai
     restart: unless-stopped
-    ports:
-      - "8090:8090"
+    # Internal-only: the BFF proxies /api/ai/* to it behind RequireAuth. Publishing
+    # :8090 bypassed that auth and (with CORS "*") allowed drive-by browser calls.
+    expose:
+      - "8090"
     environment:
       AI_PROMETHEUS_URL: "http://prometheus:9090"
       AI_LOKI_URL: "http://loki:3100"

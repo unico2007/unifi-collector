@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { setUnauthorizedHandler } from "./api";
 
 export type Role = "admin" | "guest";
 export interface User {
@@ -45,6 +46,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+  }, []);
+
+  // Any /api call that comes back 401 mid-session (e.g. the 12h cookie expired
+  // while a tab sat open) clears the user, which sends the router to the login
+  // page instead of leaving every page frozen on stale data.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      localStorage.removeItem("unico_user");
+      setUser(null);
+    });
+    return () => setUnauthorizedHandler(null);
   }, []);
 
   async function login(username: string, password: string) {

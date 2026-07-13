@@ -46,7 +46,8 @@ type overviewDTO struct {
 		Offline int `json:"offline"`
 	} `json:"devices"`
 	Clients      int             `json:"clients"`
-	Health       int             `json:"health"`
+	Health       int             `json:"health"`   // -1 = unknown (monitoring degraded / no data)
+	Degraded     bool            `json:"degraded"` // Prometheus unreachable => don't render green-and-healthy
 	Alerts       int             `json:"alerts"`
 	ClientSeries []float64       `json:"clientSeries"`
 	DeviceSeries []float64       `json:"deviceSeries"` // online devices over the range
@@ -70,8 +71,8 @@ func (s *Handlers) Overview(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var o overviewDTO
 
-	online, _ := s.prom.Scalar(ctx, `count(unifi_device_up == 1)`)
-	offline, _ := s.prom.Scalar(ctx, `count(unifi_device_up == 0)`)
+	online, errOn := s.prom.Scalar(ctx, `count(unifi_device_up == 1)`)
+	offline, errOff := s.prom.Scalar(ctx, `count(unifi_device_up == 0)`)
 	o.Devices.Online = int(online)
 	o.Devices.Offline = int(offline)
 	o.Devices.Total = int(online + offline)
@@ -79,11 +80,19 @@ func (s *Handlers) Overview(w http.ResponseWriter, r *http.Request) {
 	clients, _ := s.prom.Scalar(ctx, `sum(unifi_clients_total)`)
 	o.Clients = int(clients)
 
-	// Health: share of devices online (simple, explainable).
-	if o.Devices.Total > 0 {
+	// A query error here means Prometheus is unreachable — NOT that everything
+	// is healthy. Without this guard total=0 => Health=100, so a full monitoring
+	// outage rendered as "100% sağlam, 0 cihaz" (green + calm). Flag it instead.
+	o.Degraded = errOn != nil || errOff != nil
+
+	// Health: share of devices online (simple, explainable). -1 is the "unknown"
+	// sentinel the frontend renders as "—": either monitoring is degraded or
+	// there is genuinely no device data to assess.
+	switch {
+	case o.Degraded || o.Devices.Total == 0:
+		o.Health = -1
+	default:
 		o.Health = int(float64(o.Devices.Online) / float64(o.Devices.Total) * 100)
-	} else {
-		o.Health = 100
 	}
 	o.Alerts = s.alerts.ActiveCount(ctx) // real active-alert count (same engine as the Alerts page)
 

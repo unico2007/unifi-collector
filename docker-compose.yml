@@ -7,9 +7,12 @@ services:
     image: unifi-collector:local
     container_name: collector
     restart: unless-stopped
+    # /metrics is only scraped by Prometheus over the internal compose network
+    # (target "collector:8080"), so it is NOT published to the host/LAN.
+    expose:
+      - "8080"
     ports:
-      - "8080:8080"
-      # Syslog: host UDP 514 -> container 1514 (container runs non-root).
+      # Syslog must stay host-published: Kerio devices push RFC3164 to it.
       - "514:1514/udp"
     volumes:
       - ./configs/config.yaml:/etc/collector/config.yaml:ro
@@ -44,8 +47,11 @@ services:
     container_name: loki
     restart: unless-stopped
     command: -config.file=/etc/loki/loki-config.yml
-    ports:
-      - "3100:3100"
+    # Internal-only: reached by collector (push), the BFF (query) and Grafana
+    # over the compose network. Publishing :3100 to the LAN let anyone read all
+    # logs and push forged entries with no auth (auth_enabled: false).
+    expose:
+      - "3100"
     volumes:
       - ./configs/loki-config.yml:/etc/loki/loki-config.yml:ro
       - loki-data:/loki
@@ -57,8 +63,11 @@ services:
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
-    ports:
-      - "9090:9090"
+    # Internal-only: queried by the BFF and Grafana over the compose network.
+    # Publishing :9090 to the LAN exposed every device/client name, IP and MAC
+    # with no auth.
+    expose:
+      - "9090"
     volumes:
       - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus

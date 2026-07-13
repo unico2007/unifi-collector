@@ -46,7 +46,8 @@ export interface LogCategory {
 export interface Overview {
   devices: { total: number; online: number; offline: number };
   clients: number;
-  health: number;
+  health: number; // -1 = unknown (monitoring degraded / no data)
+  degraded?: boolean; // Prometheus unreachable — data on this page is not trustworthy
   alerts: number;
   clientSeries: number[];
   deviceSeries: number[];
@@ -59,10 +60,26 @@ export interface Overview {
 
 export type TimeRange = "1h" | "6h" | "24h" | "7d";
 
+// Registered by AuthProvider. Called the moment any /api call returns 401 so a
+// mid-session cookie expiry clears the user and bounces to the login page
+// instead of every page silently freezing on stale data.
+let onUnauthorized: (() => void) | null = null;
+export function setUnauthorizedHandler(fn: (() => void) | null) {
+  onUnauthorized = fn;
+}
+
+// Throw on any non-2xx; fire the session-expiry handler on 401 (prod only —
+// in dev there is no real session, callers fall back to mock data).
+function ensureOk(r: Response) {
+  if (r.ok) return;
+  if (r.status === 401 && !import.meta.env.DEV) onUnauthorized?.();
+  throw new Error(String(r.status));
+}
+
 async function get<T>(path: string, mock: T): Promise<T> {
   try {
     const r = await fetch(`/api${path}`, { credentials: "include" });
-    if (!r.ok) throw new Error(String(r.status));
+    ensureOk(r);
     return (await r.json()) as T;
   } catch (e) {
     // Demo/mock data is a DEV-only convenience (standalone frontend work).
@@ -207,7 +224,7 @@ export const api = {
       credentials: "include",
       body: JSON.stringify(t),
     });
-    if (!r.ok) throw new Error(String(r.status));
+    ensureOk(r);
     return (await r.json()) as AlertThresholds;
   },
   topology: () => get<Topology>("/topology", mockTopology),
@@ -221,40 +238,47 @@ export const api = {
         credentials: "include",
         body: JSON.stringify({ question }),
       });
-      if (!r.ok) throw new Error(String(r.status));
+      ensureOk(r);
       return (await r.json()) as AiChat;
-    } catch {
+    } catch (e) {
       // Offline/dev fallback so the page stays browsable without the AI service.
-      return mockAiChat(question);
+      // In production a failure must surface — never pass off a canned "(demo
+      // cavab)" as a real answer.
+      if (import.meta.env.DEV) return mockAiChat(question);
+      throw e;
     }
   },
   aiInsights: async (): Promise<AiInsights> => {
     try {
       const r = await fetch("/api/ai/insights", { credentials: "include" });
-      if (!r.ok) throw new Error(String(r.status));
+      ensureOk(r);
       return (await r.json()) as AiInsights;
-    } catch {
-      return {
-        insights: [
-          { level: "info", title: "AI Insights", detail: "AI servisi qoşulanda anomaliya və proqnozlar burada avtomatik görünəcək (demo)." },
-        ],
-        summary: "",
-        generated_at: 0,
-      };
+    } catch (e) {
+      if (import.meta.env.DEV) {
+        return {
+          insights: [
+            { level: "info", title: "AI Insights", detail: "AI servisi qoşulanda anomaliya və proqnozlar burada avtomatik görünəcək (demo)." },
+          ],
+          summary: "",
+          generated_at: 0,
+        };
+      }
+      throw e;
     }
   },
   aiSummary: async (): Promise<string> => {
     try {
       const r = await fetch("/api/ai/summary", { credentials: "include" });
-      if (!r.ok) throw new Error(String(r.status));
+      ensureOk(r);
       return ((await r.json()) as { summary: string }).summary;
-    } catch {
-      return "Son 24 saatda 2 error, 3 xəbərdarlıq qeydə alınıb. Ən çox WAN gecikməsi ilə bağlıdır (demo).";
+    } catch (e) {
+      if (import.meta.env.DEV) return "Son 24 saatda 2 error, 3 xəbərdarlıq qeydə alınıb. Ən çox WAN gecikməsi ilə bağlıdır (demo).";
+      throw e;
     }
   },
   reindexKnowledge: async (): Promise<{ ready: boolean; chunks: number; error?: string | null }> => {
     const r = await fetch("/api/ai/knowledge/reindex", { method: "POST", credentials: "include" });
-    if (!r.ok) throw new Error(String(r.status));
+    ensureOk(r);
     return (await r.json()) as { ready: boolean; chunks: number; error?: string | null };
   },
 };
