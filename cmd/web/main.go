@@ -89,7 +89,7 @@ func run() error {
 		// never actually returned and the frontend showed a mock answer. 150s
 		// covers the full chain. Go has no per-route write timeout, and this is a
 		// LAN-internal tool, so a generous server-wide value is the pragmatic fix.
-		WriteTimeout:           150 * time.Second,
+		WriteTimeout: 150 * time.Second,
 	}, users, log)
 	if err != nil {
 		return err
