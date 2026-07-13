@@ -8,6 +8,8 @@ same interface.
 
 from __future__ import annotations
 
+import re
+
 import httpx
 
 from .clients import prom, loki, llm
@@ -18,17 +20,21 @@ from .rag import kb
 # far better than raw metric names. Extend it as new vendors/metrics arrive.
 SCHEMA = """
 Prometheus metrics (namespace unifi_), labels in {}:
-- unifi_device_up{vendor,site,mac,name,model,type}            1=online 0=offline
+- unifi_device_up{vendor,site,mac,name,model,type}            1=online 0=offline (DEVICES: APs/switches/gateways)
 - unifi_device_cpu_percent{...}                               device CPU %
 - unifi_device_memory_percent{...}                            device memory %
 - unifi_device_uptime_seconds{...}
 - unifi_device_rx_bytes{...} / unifi_device_tx_bytes{...}     cumulative counters (use rate())
+- unifi_device_info{vendor,site,mac,name,model,type,version,state,ip}  value=1; carries device ip/firmware/state
 - unifi_devices_total{vendor,site,type}                       device count
 - unifi_clients_total{vendor,site}                            connected client count
-- unifi_client_rssi{vendor,site,mac,name,ap,vlan}             signal dBm
-- unifi_client_rx_rate / unifi_client_tx_rate{...}            bits/s
+- unifi_client_rssi{vendor,site,mac,name,ap,vlan,band}        client signal dBm. A CLIENT (phone/laptop) has NO up/offline metric — it is CONNECTED iff it appears here.
+- unifi_client_rx_rate / unifi_client_tx_rate{...}            radio LINK rate bits/s (negotiated speed, NOT real traffic)
+- unifi_client_rx_bytes / unifi_client_tx_bytes{...}          bytes used THIS SESSION (real data volume)
+- unifi_client_connected_seconds{...}                         how long the client has been connected
+- unifi_client_info{vendor,site,mac,name,ip}                  value=1; carries the client's IP
 - unifi_health_status{vendor,site,subsystem}
-vendor is "unifi" or "kerio".
+vendor is "unifi" or "kerio". Client "band" is "2.4 GHz" or "5 GHz".
 
 Loki logs: labels {vendor,site,level,event}. Example stream selector {vendor="unifi"}.
 Log levels: info, warn, error. Query with LogQL, e.g. {vendor="unifi"} |= "error".
@@ -56,9 +62,18 @@ Rules:
   ("logql" only matters for "troubleshoot"; use "" otherwise.)
 - Do NOT invent metric or label names outside the schema.
 - Add a label filter ONLY when the user explicitly names that value (a specific
-  device name, site, AP, or vendor). For general questions ("the network",
+  device name, client, AP, site, or vendor). For general questions ("the network",
   "all devices/clients", "how many ...") use the BARE metric with NO label
   selector — never guess a site/name/label the user did not say.
+- NAME MATCHING: Prometheus matches label values EXACTLY and case-sensitively, but
+  users almost never type the exact stored name. So when the user names a specific
+  device/client/AP, match it with a case-insensitive SUBSTRING regex:
+  name=~"(?i).*TERM.*"  — NOT  name="TERM".  (e.g. a phone the user calls "iphone"
+  is stored as "iPhone" → name=~"(?i).*iphone.*".)
+- Client names are the device HOSTNAME (e.g. "iPhone", "Galaxy-A50", "DESKTOP-…"),
+  NOT a person's name. If the user asks about "<person>'s phone", still build the
+  regex from the words they gave; if nothing matches, the answer will say so.
+- For a CLIENT's "status": query unifi_client_rssi (presence = connected, value = signal).
 """.replace("{max}", "24h")
 
 # Few-shot examples kept as a plain (non-f) string so the JSON braces don't need
@@ -71,7 +86,11 @@ PLANNER_EXAMPLES = (
     "Q: şəbəkədə neçə klient var?\n"
     '{"source":"prometheus","query":"sum(unifi_clients_total)","reason":"total clients, no label filter"}\n'
     "Q: 5.2.Left_Nano HD cihazının CPU-su neçədir?\n"
-    '{"source":"prometheus","query":"unifi_device_cpu_percent{name=\\"5.2.Left_Nano HD\\"}","reason":"user named a specific device, so filter by name"}\n'
+    '{"source":"prometheus","query":"unifi_device_cpu_percent{name=~\\"(?i).*Left_Nano HD.*\\"}","reason":"named device, case-insensitive substring regex"}\n'
+    "Q: Zeynalın iphone-u nə vəziyyətdədir?\n"
+    '{"source":"prometheus","query":"unifi_client_rssi{name=~\\"(?i).*iphone.*\\"}","reason":"named client; rssi presence = connected; regex because stored name differs"}\n'
+    "Q: Galaxy-A50 nə qədər data işlədib?\n"
+    '{"source":"prometheus","query":"unifi_client_rx_bytes{name=~\\"(?i).*galaxy.*a50.*\\"}","reason":"session data volume for a named client, regex match"}\n'
 )
 
 PLANNER_SYSTEM = PLANNER_SYSTEM + PLANNER_EXAMPLES
@@ -116,6 +135,16 @@ def _validate(source: str, query: str) -> str | None:
         if bad in lowered:
             return "sorğu qadağan olunan ifadə saxlayır"
     return None
+
+
+def _metric_base(query: str) -> str | None:
+    """Extract the bare metric name from a query like `unifi_client_rssi{name=~"..."}`."""
+    m = re.match(r"\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\{", query)
+    return m.group(1) if m else None
+
+
+def _is_empty_prom(data: dict) -> bool:
+    return not data.get("data", {}).get("result", [])
 
 
 def _summarize(source: str, data: dict, limit: int = 40) -> str:
@@ -234,6 +263,24 @@ async def _run(question: str) -> dict:
         return {"answer": f"Sorğu icra olunmadı: {e}", "source": source, "query": query}
 
     result_text = _summarize(source, data)
+
+    # Named lookup that matched nothing: instead of a bare "not found", fetch the
+    # names that DO exist for this metric so the answer can suggest them. This is
+    # the common "Zeynalın iphone-u" case — the stored names are hostnames
+    # ("iPhone", "Galaxy-A50"), never a person, so an exact/near miss is expected.
+    if source == "prometheus" and _is_empty_prom(data) and ("name=" in query or "name=~" in query):
+        base = _metric_base(query)
+        if base:
+            try:
+                alt = await prom.query(base)
+                names = sorted({
+                    s.get("metric", {}).get("name", "")
+                    for s in alt.get("data", {}).get("result", [])
+                } - {""})
+                if names:
+                    result_text += "\n\n(Bu ada uyğun nəticə yoxdur. Bu metrikada mövcud adlar: " + ", ".join(names[:25]) + ")"
+            except Exception:  # noqa: BLE001
+                pass
 
     # 3) answer from the result
     answer = await llm.generate(
