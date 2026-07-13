@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api, Device } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { usePolling, useRefresh } from "../lib/refresh";
@@ -38,6 +38,7 @@ function Bar({ pct }: { pct: number }) {
 export default function DevicesPage() {
   const { user } = useAuth();
   const { refresh, refreshing } = useRefresh();
+  const navigate = useNavigate();
   const { data } = usePolling<Device[]>(() => api.devices());
   const devices = data ?? [];
   const [vendor, setVendor] = useState("all");
@@ -70,6 +71,7 @@ export default function DevicesPage() {
           <option value="offline">Offline</option>
         </select>
         <input className="input flex-1 min-w-[160px]" placeholder="Cihaz axtar..." value={q} onChange={(e) => setQ(e.target.value)} />
+        <span className="pill bg-brand-50 text-brand-700 tabular-nums">{sorted.length} cihaz</span>
         {user?.role === "admin" && (
           <button className="btn btn-primary" onClick={refresh} disabled={refreshing}>
             {refreshing ? "Yenilənir..." : "Yenilə"}
@@ -77,7 +79,7 @@ export default function DevicesPage() {
         )}
       </div>
 
-      <div className="card overflow-auto">
+      <div className="card overflow-auto table-sticky max-h-[calc(100vh-180px)]">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-muted">
@@ -88,9 +90,13 @@ export default function DevicesPage() {
           </thead>
           <tbody>
             {sorted.map((d) => (
-              <tr key={d.name} className="odd:bg-page/60 hover:bg-page">
+              <tr
+                key={`${d.vendor}:${d.name}:${d.mac}`}
+                className="odd:bg-page/60 hover:bg-page cursor-pointer"
+                onClick={() => navigate(`/devices/${encodeURIComponent(d.name)}`)}
+              >
                 <td className="px-3 py-2 border-b border-line font-medium">
-                  <Link to={`/devices/${encodeURIComponent(d.name)}`} className="text-brand-600 hover:underline">{d.name}</Link>
+                  <Link to={`/devices/${encodeURIComponent(d.name)}`} className="text-brand-600 hover:underline" onClick={(e) => e.stopPropagation()}>{d.name}</Link>
                 </td>
                 <td className="px-3 py-2 border-b border-line"><VendorBadge v={d.vendor} /></td>
                 <td className="px-3 py-2 border-b border-line text-muted">{d.type}</td>

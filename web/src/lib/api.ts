@@ -51,7 +51,9 @@ export interface Overview {
   clientSeries: number[];
   deviceSeries: number[];
   healthSeries: number[];
-  vendorSplit: { vendor: Vendor; devices: number; clients: number }[];
+  healthBars: number[];
+  topClients: { label: string; value: number; sub?: string }[];
+  vendorSplit: { vendor: Vendor; devices: number; online: number; clients: number }[];
   recentLogs: { time: string; level: "info" | "warn" | "error"; msg: string }[];
 }
 
@@ -276,9 +278,17 @@ const mockOverview: Overview = {
   clientSeries: [120, 128, 131, 140, 138, 145, 150, 149, 152, 154, 151, 154],
   deviceSeries: [25, 25, 25, 24, 25, 25, 25, 25, 23, 23, 23, 23],
   healthSeries: [100, 100, 100, 96, 100, 100, 100, 100, 92, 92, 92, 92],
+  healthBars: [100,100,100,100,100,96,100,100,100,100,100,100,100,100,88,88,96,100,100,100,100,100,100,100,100,100,100,100,100,100,100,100,72,100,100,100,100,100,100,100,100,100,92,92,92,92,92,92],
+  topClients: [
+    { label: "k.huseynov-pc", value: 84.2, sub: "Mbps" },
+    { label: "a.mammadov-mbp", value: 31.5, sub: "Mbps" },
+    { label: "backup-nas", value: 12.8, sub: "Mbps" },
+    { label: "r.aliyeva-iphone", value: 4.1, sub: "Mbps" },
+    { label: "Guest-2f1a", value: 1.3, sub: "Mbps" },
+  ],
   vendorSplit: [
-    { vendor: "unifi", devices: 22, clients: 154 },
-    { vendor: "kerio", devices: 3, clients: 0 },
+    { vendor: "unifi", devices: 22, online: 20, clients: 154 },
+    { vendor: "kerio", devices: 3, online: 3, clients: 0 },
   ],
   recentLogs: [
     { time: "12:04:30", level: "info", msg: "Client 9c:7b connected on AP-Ofis-1" },

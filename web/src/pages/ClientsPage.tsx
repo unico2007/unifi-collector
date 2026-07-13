@@ -50,7 +50,7 @@ export default function ClientsPage() {
         <span className="pill bg-brand-50 text-brand-700">{clients.length} klient</span>
       </div>
 
-      <div className="card overflow-auto">
+      <div className="card overflow-auto table-sticky max-h-[calc(100vh-180px)]">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-muted">

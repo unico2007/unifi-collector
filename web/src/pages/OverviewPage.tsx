@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { api, Overview, AiInsights, AiInsight, TimeRange } from "../lib/api";
+import { api, Overview, AiInsights, AiInsight, AlertHistoryRow, TimeRange } from "../lib/api";
 import { usePolling } from "../lib/refresh";
-import { AreaLine, Donut, RangeSelector, rangeLabel, rangeTicks, seriesDelta, StatCard } from "../components/charts";
+import { AreaLine, Donut, RangeSelector, rangeLabel, rangeTicks, seriesDelta, StatCard, TopBars } from "../components/charts";
 import { PageSkeleton } from "../components/Skeleton";
 
 function SvgIcon({ d }: { d: string }) {
@@ -98,6 +98,116 @@ function StatusStrip({ d }: { d: Overview }) {
   );
 }
 
+// Status-page style uptime strip: last 24h of fleet health in 30-min buckets.
+function HealthStrip({ bars }: { bars: number[] }) {
+  if (!bars.length) return null;
+  const tone = (v: number) =>
+    v >= 99 ? "bg-green-500" : v >= 95 ? "bg-green-300" : v >= 80 ? "bg-amber-400" : "bg-red-500";
+  // Bucket i ends (bars.length - 1 - i) * 30min ago.
+  const when = (i: number) => {
+    const t = new Date(Date.now() - (bars.length - 1 - i) * 30 * 60 * 1000);
+    return t.toLocaleTimeString("az", { hour: "2-digit", minute: "2-digit" });
+  };
+  return (
+    <div className="card px-4 py-3">
+      <div className="flex items-center mb-2">
+        <span className="text-sm font-semibold">Sağlamlıq — son 24 saat</span>
+        <span className="ml-auto flex items-center gap-3 text-[11px] text-muted">
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-500" />100%</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-amber-400" />qismən</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-500" />problem</span>
+        </span>
+      </div>
+      <div className="flex gap-[3px] items-end">
+        {bars.map((v, i) => (
+          <span
+            key={i}
+            title={`${when(i)} — ${Math.round(v)}%`}
+            className={`flex-1 h-7 rounded-[3px] ${tone(v)} hover:opacity-75 transition-opacity`}
+          />
+        ))}
+      </div>
+      <div className="flex justify-between text-[10px] text-muted mt-1.5">
+        <span>24 saat əvvəl</span>
+        <span>indi</span>
+      </div>
+    </div>
+  );
+}
+
+// Compact per-vendor infrastructure summary with an online/total ratio bar.
+function InfraCard({ d }: { d: Overview }) {
+  return (
+    <div className="card p-4">
+      <div className="text-sm font-semibold mb-3">İnfrastruktur</div>
+      <div className="space-y-4">
+        {d.vendorSplit.map((v) => {
+          const pct = v.devices ? Math.round((v.online / v.devices) * 100) : 100;
+          return (
+            <div key={v.vendor}>
+              <div className="flex items-center gap-2">
+                <span className={`pill ${v.vendor === "unifi" ? "bg-brand-50 text-brand-700" : "bg-orange-50 text-orange-700"}`}>
+                  {v.vendor === "unifi" ? "UniFi" : "Kerio"}
+                </span>
+                <span className="text-sm font-medium tabular-nums">
+                  {v.online}/{v.devices} online
+                </span>
+                <span className="ml-auto text-xs text-muted tabular-nums">
+                  {v.clients ? `${v.clients} klient` : "—"}
+                </span>
+              </div>
+              <div className="mt-2 h-1.5 rounded-full bg-line overflow-hidden">
+                <div
+                  className={`h-full ${pct === 100 ? "bg-green-500" : pct >= 80 ? "bg-amber-400" : "bg-red-500"}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Recent alert activity (fired/resolved), from the same history the Alerts
+// page shows — so the Overview tells the incident story, not just log noise.
+function AlertFeed() {
+  const { data } = usePolling<AlertHistoryRow[]>(() => api.alertHistory(), [], 30000);
+  const rows = (data ?? []).slice(0, 5);
+  const fmt = (ts: number) =>
+    new Date(ts * 1000).toLocaleString("az", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return (
+    <div className="card p-4 flex flex-col">
+      <div className="flex items-center mb-3">
+        <span className="text-sm font-semibold">Son alertlər</span>
+        <Link to="/alerts" className="ml-auto text-xs text-brand-600 hover:underline">
+          hamısı →
+        </Link>
+      </div>
+      {rows.length === 0 && <div className="text-sm text-muted">Alert tarixçəsi boşdur ✓</div>}
+      <div className="space-y-2.5">
+        {rows.map((a, i) => (
+          <div key={i} className="flex gap-2.5">
+            <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${a.level === "critical" ? "bg-red-500" : "bg-amber-400"}`} />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium truncate">{a.rule} — {a.target}</span>
+                {a.resolvedAt === 0 ? (
+                  <span className="pill bg-red-50 text-red-600 shrink-0">aktiv</span>
+                ) : (
+                  <span className="pill bg-green-50 text-green-700 shrink-0">həll olunub</span>
+                )}
+              </div>
+              <div className="text-[11px] text-muted tabular-nums">{fmt(a.firedAt)}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function OverviewPage() {
   const [range, setRange] = useState<TimeRange>("24h");
   const { data: d } = usePolling<Overview>(() => api.overview(range), [range]);
@@ -134,31 +244,37 @@ export default function OverviewPage() {
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-4">
-        <div className="space-y-3">
-          {d.vendorSplit.map((v) => (
-            <div key={v.vendor} className="card p-4 flex items-center justify-between">
-              <div>
-                <span className={`pill ${v.vendor === "unifi" ? "bg-brand-50 text-brand-700" : "bg-orange-50 text-orange-700"}`}>
-                  {v.vendor === "unifi" ? "UniFi" : "Kerio"}
-                </span>
-                <div className="text-sm text-muted mt-2">{v.devices} cihaz{v.clients ? ` · ${v.clients} klient` : ""}</div>
-              </div>
+      <HealthStrip bars={d.healthBars} />
+
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <InfraCard d={d} />
+        <div className="card p-4">
+          <div className="flex items-center mb-3">
+            <span className="text-sm font-semibold">Ən aktiv klientlər</span>
+            <Link to="/traffic" className="ml-auto text-xs text-brand-600 hover:underline">trafik →</Link>
+          </div>
+          {d.topClients.length === 0 ? (
+            <div className="text-sm text-muted">Hazırda aktiv trafik yoxdur</div>
+          ) : (
+            <TopBars rows={d.topClients.map((c) => ({ label: c.label, value: c.value }))} unit=" Mbps" />
+          )}
+        </div>
+        <AlertFeed />
+      </div>
+
+      <div className="card p-4">
+        <div className="flex items-center mb-3">
+          <span className="text-sm font-semibold">Son loglar</span>
+          <Link to="/logs" className="ml-auto text-xs text-brand-600 hover:underline">hamısı →</Link>
+        </div>
+        <div className="space-y-1">
+          {d.recentLogs.map((l, i) => (
+            <div key={i} className="flex items-center gap-3 text-sm py-1 border-b border-line last:border-0">
+              <span className="font-mono text-xs text-muted w-16 shrink-0">{l.time}</span>
+              <span className={`pill ${levelPill[l.level]}`}>{l.level}</span>
+              <span className="truncate">{l.msg}</span>
             </div>
           ))}
-        </div>
-
-        <div className="card p-4 lg:col-span-2">
-          <div className="text-sm font-medium mb-3">Son loglar</div>
-          <div className="space-y-1">
-            {d.recentLogs.map((l, i) => (
-              <div key={i} className="flex items-center gap-3 text-sm py-1 border-b border-line last:border-0">
-                <span className="font-mono text-xs text-muted w-16 shrink-0">{l.time}</span>
-                <span className={`pill ${levelPill[l.level]}`}>{l.level}</span>
-                <span className="truncate">{l.msg}</span>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
     </div>

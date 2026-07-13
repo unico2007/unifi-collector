@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/murad/unifi-collector/internal/web/query"
@@ -50,6 +51,8 @@ type overviewDTO struct {
 	ClientSeries []float64       `json:"clientSeries"`
 	DeviceSeries []float64       `json:"deviceSeries"` // online devices over the range
 	HealthSeries []float64       `json:"healthSeries"` // % of devices online over the range
+	HealthBars   []float64       `json:"healthBars"`   // fixed last-24h health, 30m buckets (uptime strip)
+	TopClients   []talker        `json:"topClients"`   // top 5 by real throughput (Mbps)
 	VendorSplit  []vendorDTO     `json:"vendorSplit"`
 	RecentLogs   []query.LogLine `json:"recentLogs"`
 }
@@ -57,6 +60,7 @@ type overviewDTO struct {
 type vendorDTO struct {
 	Vendor  string `json:"vendor"`
 	Devices int    `json:"devices"`
+	Online  int    `json:"online"`
 	Clients int    `json:"clients"`
 }
 
@@ -97,6 +101,16 @@ func (s *Handlers) Overview(w http.ResponseWriter, r *http.Request) {
 	if o.HealthSeries == nil {
 		o.HealthSeries = []float64{}
 	}
+	// Uptime strip: always the last 24h in 30-minute buckets, independent of
+	// the selected chart range, so the strip reads like a status page.
+	o.HealthBars, _ = s.prom.RangeSeries(ctx, `count(unifi_device_up == 1) / count(unifi_device_up) * 100`, 24*time.Hour, 30*time.Minute)
+	if o.HealthBars == nil {
+		o.HealthBars = []float64{}
+	}
+
+	// Top clients by REAL throughput (rx+tx bytes counters, not the negotiated
+	// PHY rate), so the list reflects who is actually moving data.
+	o.TopClients = s.topClientThroughput(ctx)
 
 	// Vendor split: devices + clients per vendor.
 	o.VendorSplit = s.vendorSplit(ctx)
@@ -117,6 +131,26 @@ func (s *Handlers) Overview(w http.ResponseWriter, r *http.Request) {
 	respond.JSON(w, http.StatusOK, o)
 }
 
+// topClientThroughput returns the top-5 clients by current real throughput,
+// measured from the per-client byte counters (rate over 10m), in Mbps.
+func (s *Handlers) topClientThroughput(ctx context.Context) []talker {
+	rows, err := s.prom.Query(ctx,
+		`topk(5, sum by (name, mac) (rate(unifi_client_rx_bytes[10m]) + rate(unifi_client_tx_bytes[10m])))`)
+	if err != nil {
+		return []talker{}
+	}
+	out := make([]talker, 0, len(rows))
+	for _, r := range rows {
+		name := r.Labels["name"]
+		if name == "" {
+			name = r.Labels["mac"]
+		}
+		out = append(out, talker{Label: name, Value: round1(r.Value * 8 / 1e6), Sub: "Mbps"})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Value > out[j].Value })
+	return out
+}
+
 func (s *Handlers) vendorSplit(ctx context.Context) []vendorDTO {
 	devByVendor := map[string]int{}
 	if rows, err := s.prom.Query(ctx, `sum by (vendor) (unifi_devices_total)`); err == nil {
@@ -130,6 +164,12 @@ func (s *Handlers) vendorSplit(ctx context.Context) []vendorDTO {
 			cliByVendor[r.Labels["vendor"]] = int(r.Value)
 		}
 	}
+	onlineByVendor := map[string]int{}
+	if rows, err := s.prom.Query(ctx, `count by (vendor) (unifi_device_up == 1)`); err == nil {
+		for _, r := range rows {
+			onlineByVendor[r.Labels["vendor"]] = int(r.Value)
+		}
+	}
 	// Stable order: unifi first, then kerio, then any others.
 	order := []string{"unifi", "kerio"}
 	seen := map[string]bool{}
@@ -139,7 +179,7 @@ func (s *Handlers) vendorSplit(ctx context.Context) []vendorDTO {
 			return
 		}
 		seen[v] = true
-		out = append(out, vendorDTO{Vendor: v, Devices: devByVendor[v], Clients: cliByVendor[v]})
+		out = append(out, vendorDTO{Vendor: v, Devices: devByVendor[v], Online: onlineByVendor[v], Clients: cliByVendor[v]})
 	}
 	for _, v := range order {
 		if _, ok := devByVendor[v]; ok {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"sort"
 
 	"github.com/murad/unifi-collector/internal/web/query"
 	"github.com/murad/unifi-collector/internal/web/respond"
@@ -79,10 +78,11 @@ func (s *Handlers) Traffic(w http.ResponseWriter, r *http.Request) {
 	d.TotalRx = formatBytes(rxTotal)
 	d.TotalTx = formatBytes(txTotal)
 
-	// Top talkers by current client throughput (rx+tx rate, bits/s). We only
-	// have instantaneous rates, not cumulative per-client volume, so this is
-	// "top by current speed", labelled in Mbps.
-	d.TopTalkers = s.topTalkers(ctx)
+	// Top talkers by real client throughput (rate over the rx/tx byte
+	// counters). The unifi_client_{rx,tx}_rate metrics are the negotiated PHY
+	// link rate, not traffic — an idle phone next to the AP would top that
+	// list — so they are deliberately not used here.
+	d.TopTalkers = s.topClientThroughput(ctx)
 
 	// Per-AP current throughput (Mbps).
 	d.PerAp = []kv{}
@@ -96,32 +96,6 @@ func (s *Handlers) Traffic(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respond.JSON(w, http.StatusOK, d)
-}
-
-func (s *Handlers) topTalkers(ctx context.Context) []talker {
-	rate := map[string]float64{} // name -> bits/s
-	for _, metric := range []string{`unifi_client_rx_rate`, `unifi_client_tx_rate`} {
-		rows, err := s.prom.Query(ctx, metric)
-		if err != nil {
-			continue
-		}
-		for _, r := range rows {
-			name := r.Labels["name"]
-			if name == "" {
-				name = r.Labels["mac"]
-			}
-			rate[name] += r.Value
-		}
-	}
-	out := make([]talker, 0, len(rate))
-	for name, bits := range rate {
-		out = append(out, talker{Label: name, Value: round1(bits / 1e6), Sub: "Mbps"})
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Value > out[j].Value })
-	if len(out) > 5 {
-		out = out[:5]
-	}
-	return out
 }
 
 func mustSeries(s []float64, _ error) []float64 {
