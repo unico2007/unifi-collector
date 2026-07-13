@@ -109,6 +109,7 @@ export interface DeviceDetail {
   rx: number[];
   tx: number[];
   clients: { name: string; mac: string; rssi: number; rx: string; tx: string }[];
+  logs: { time: string; level: "info" | "warn" | "error"; msg: string }[];
 }
 
 export interface AiChat {
@@ -544,6 +545,11 @@ function mockDeviceDetail(name: string): DeviceDetail {
     clients: [
       { name: "a.mammadov-mbp", mac: "3c:22:fb:aa:01", rssi: -48, rx: "22 Mbps", tx: "8 Mbps" },
       { name: "k.huseynov-pc", mac: "d8:cb:8a:cc:03", rssi: -72, rx: "6 Mbps", tx: "1 Mbps" },
+    ],
+    logs: [
+      { time: "12:04:30", level: "info", msg: `Client 9c:7b connected on ${name}` },
+      { time: "11:48:12", level: "warn", msg: `High channel utilization on ${name}` },
+      { time: "10:15:44", level: "info", msg: `${name} firmware check ok` },
     ],
   };
 }

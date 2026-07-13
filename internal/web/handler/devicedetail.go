@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/murad/unifi-collector/internal/web/query"
 	"github.com/murad/unifi-collector/internal/web/respond"
@@ -18,12 +19,13 @@ type detailClient struct {
 }
 
 type deviceDetailDTO struct {
-	Device  deviceDTO      `json:"device"`
-	CPU     []float64      `json:"cpu"`
-	Memory  []float64      `json:"memory"`
-	Rx      []float64      `json:"rx"`
-	Tx      []float64      `json:"tx"`
-	Clients []detailClient `json:"clients"`
+	Device  deviceDTO       `json:"device"`
+	CPU     []float64       `json:"cpu"`
+	Memory  []float64       `json:"memory"`
+	Rx      []float64       `json:"rx"`
+	Tx      []float64       `json:"tx"`
+	Clients []detailClient  `json:"clients"`
+	Logs    []query.LogLine `json:"logs"` // recent log lines mentioning this device
 }
 
 func (s *Handlers) DeviceDetail(w http.ResponseWriter, r *http.Request) {
@@ -82,6 +84,16 @@ func (s *Handlers) DeviceDetail(w http.ResponseWriter, r *http.Request) {
 				Tx:   formatRate(tx[cmac]),
 			})
 		}
+	}
+
+	// Recent logs that mention this device by name (both vendors), so the
+	// detail page can show the device's own event stream.
+	d.Logs = s.loki.Recent(ctx, fmt.Sprintf(`{vendor=~"unifi|kerio"} |= "%s"`, escapeLabel(name)), 24*time.Hour, 30)
+	for i := range d.Logs {
+		d.Logs[i].Msg = friendlyLog(d.Logs[i].Msg)
+	}
+	if d.Logs == nil {
+		d.Logs = []query.LogLine{}
 	}
 
 	respond.JSON(w, http.StatusOK, d)

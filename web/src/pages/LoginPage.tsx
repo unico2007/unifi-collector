@@ -27,16 +27,29 @@ export default function LoginPage() {
 
   return (
     <div className="h-full flex">
-      <div className="hidden md:flex w-2/5 bg-brand-600 text-white flex-col justify-between p-10">
-        <div className="flex items-center gap-2">
+      <div className="hidden md:flex w-2/5 relative overflow-hidden bg-gradient-to-br from-brand-500 via-brand-600 to-brand-700 text-white flex-col justify-between p-10">
+        {/* decorative rings */}
+        <div className="absolute -top-24 -right-24 w-80 h-80 rounded-full border-[28px] border-white/10" />
+        <div className="absolute -bottom-32 -left-16 w-96 h-96 rounded-full border-[36px] border-white/5" />
+        <div className="relative flex items-center gap-2">
           <span className="w-9 h-9 rounded-lg bg-white text-brand-600 grid place-items-center font-bold text-lg">U</span>
-          <span className="text-xl font-semibold">unico</span>
+          <span className="text-xl font-semibold tracking-wide">unico</span>
         </div>
-        <div>
+        <div className="relative">
           <h2 className="text-3xl font-semibold leading-tight">Şəbəkə Monitorinqi</h2>
           <p className="mt-3 text-brand-100 max-w-sm">UniFi və Kerio cihazları, klientlər və loglar — bir paneldə, real vaxtda.</p>
+          <ul className="mt-6 space-y-2.5 text-sm text-brand-100">
+            {["Canlı metriklər və alert bildirişləri", "AI köməkçi — sualını öz dilində ver", "Brendli Excel/PDF hesabatlar"].map((f) => (
+              <li key={f} className="flex items-center gap-2.5">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0 text-white">
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+                {f}
+              </li>
+            ))}
+          </ul>
         </div>
-        <p className="text-brand-200 text-sm">© Unico</p>
+        <p className="relative text-brand-200 text-sm">© Unico · unico.az</p>
       </div>
 
       <div className="flex-1 grid place-items-center p-6">
@@ -65,11 +78,7 @@ export default function LoginPage() {
 
           {err && <p className="text-sm text-red-600 mb-2">{err}</p>}
 
-          <label className="flex items-center gap-2 text-sm text-muted my-3">
-            <input type="checkbox" className="accent-brand-500" /> Məni xatırla
-          </label>
-
-          <button type="submit" disabled={busy} className="btn btn-primary w-full justify-center h-10">
+          <button type="submit" disabled={busy} className="btn btn-primary w-full justify-center h-10 mt-3">
             {busy ? "Yoxlanılır..." : "Daxil ol"}
           </button>
 

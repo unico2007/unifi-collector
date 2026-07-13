@@ -190,11 +190,19 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"));
   function toggleTheme() {
-    const next = !dark;
-    document.documentElement.classList.toggle("dark", next);
-    localStorage.setItem("unico_theme", next ? "dark" : "light");
-    setDark(next);
+    setDark((prev) => {
+      const next = !prev;
+      document.documentElement.classList.toggle("dark", next);
+      localStorage.setItem("unico_theme", next ? "dark" : "light");
+      return next;
+    });
   }
+  // The ⌘K palette's "Temanı dəyiş" action toggles the theme from outside.
+  useEffect(() => {
+    const onToggle = () => toggleTheme();
+    window.addEventListener("unico:toggle-theme", onToggle);
+    return () => window.removeEventListener("unico:toggle-theme", onToggle);
+  }, []);
 
   // On mobile the sidebar is an off-canvas drawer toggled by a header hamburger.
   const [menuOpen, setMenuOpen] = useState(false);

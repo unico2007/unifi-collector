@@ -16,8 +16,28 @@
   --page: 15 23 42;
   --ink: 226 232 240;
   --muted: 148 163 184;
-  --line: 42 51 66;
+  --line: 51 62 80; /* slightly lifted so card borders stay visible on dark */
   --card: 26 33 50;
+}
+
+/* Slim, theme-aware scrollbars (WebKit + Firefox). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--muted) / 0.4) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgb(var(--muted) / 0.35);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--muted) / 0.55);
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 html,
@@ -45,7 +65,7 @@ body {
     @apply h-9 px-3 rounded-lg border border-line bg-card text-ink text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100;
   }
   .btn {
-    @apply h-9 px-3 rounded-lg border border-line bg-card text-sm text-ink hover:bg-page transition-colors inline-flex items-center gap-2;
+    @apply h-9 px-3 rounded-lg border border-line bg-card text-sm text-ink hover:bg-page transition-colors inline-flex items-center gap-2 outline-none focus-visible:ring-2 focus-visible:ring-brand-500;
   }
   .btn-primary {
     @apply bg-brand-500 border-brand-500 text-white hover:bg-brand-600;
