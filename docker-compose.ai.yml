@@ -26,7 +26,9 @@ services:
       # the PRIMARY model (takes priority over NVIDIA); Ollama stays as fallback.
       # Fast + good Azerbaijani; free or paid key, same code.
       AI_GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
-      AI_GEMINI_MODEL: "${GEMINI_MODEL:-gemini-2.5-flash}"
+      # 3.1-flash-lite: fast (~1.5s), cheap, strong Azerbaijani, no default
+      # "thinking". (gemini-2.5-flash was retired for new API keys.)
+      AI_GEMINI_MODEL: "${GEMINI_MODEL:-gemini-3.1-flash-lite}"
       # Empty = auto (Azerbaijani with any cloud model, English local-only).
       AI_ANSWER_LANG: "${AI_ANSWER_LANG:-}"
     extra_hosts:
