@@ -48,6 +48,8 @@ type overviewDTO struct {
 	Health       int             `json:"health"`
 	Alerts       int             `json:"alerts"`
 	ClientSeries []float64       `json:"clientSeries"`
+	DeviceSeries []float64       `json:"deviceSeries"` // online devices over the range
+	HealthSeries []float64       `json:"healthSeries"` // % of devices online over the range
 	VendorSplit  []vendorDTO     `json:"vendorSplit"`
 	RecentLogs   []query.LogLine `json:"recentLogs"`
 }
@@ -85,6 +87,15 @@ func (s *Handlers) Overview(w http.ResponseWriter, r *http.Request) {
 	o.ClientSeries, _ = s.prom.RangeSeries(ctx, `sum(unifi_clients_total)`, dur, step)
 	if o.ClientSeries == nil {
 		o.ClientSeries = []float64{}
+	}
+	// Online-device and health history feed the KPI sparklines/deltas.
+	o.DeviceSeries, _ = s.prom.RangeSeries(ctx, `count(unifi_device_up == 1)`, dur, step)
+	if o.DeviceSeries == nil {
+		o.DeviceSeries = []float64{}
+	}
+	o.HealthSeries, _ = s.prom.RangeSeries(ctx, `count(unifi_device_up == 1) / count(unifi_device_up) * 100`, dur, step)
+	if o.HealthSeries == nil {
+		o.HealthSeries = []float64{}
 	}
 
 	// Vendor split: devices + clients per vendor.

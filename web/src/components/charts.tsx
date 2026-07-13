@@ -2,7 +2,8 @@
 // Smooth curves, gradient fills, gridlines, and interactive hover tooltips —
 // no external chart library (keeps the Docker build lean).
 
-import { ReactNode, useId, useMemo, useState } from "react";
+import { ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { TimeRange } from "../lib/api";
 
 const BRAND = "#1466d6";
@@ -87,6 +88,56 @@ const toneMap: Record<string, { text: string; bg: string; ring: string }> = {
   slate: { text: "text-ink", bg: "bg-slate-100", ring: "ring-slate-100" },
 };
 
+/** Animate numeric value changes with a short count-up (reduced-motion aware). */
+function useCountUp(target: number): number {
+  const [shown, setShown] = useState(target);
+  const fromRef = useRef(target);
+  useEffect(() => {
+    const from = fromRef.current;
+    if (from === target || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      fromRef.current = target;
+      setShown(target);
+      return;
+    }
+    const t0 = performance.now();
+    const dur = 600;
+    let raf = 0;
+    const step = (now: number) => {
+      const p = Math.min(1, (now - t0) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setShown(from + (target - from) * eased);
+      if (p < 1) raf = requestAnimationFrame(step);
+      else fromRef.current = target;
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target]);
+  return shown;
+}
+
+/**
+ * Trend of a series: change of the last point vs the start of the range.
+ * Returns null when there is not enough data to make a claim.
+ */
+export function seriesDelta(series?: number[]): number | null {
+  if (!series || series.length < 2) return null;
+  const first = series.find((v) => v > 0) ?? series[0];
+  const last = series[series.length - 1];
+  if (first === 0) return null;
+  return ((last - first) / first) * 100;
+}
+
+function DeltaChip({ pct, label }: { pct: number; label?: string }) {
+  const flat = Math.abs(pct) < 0.5;
+  const cls = flat ? "bg-slate-100 text-slate-500" : pct > 0 ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600";
+  const arrow = flat ? "→" : pct > 0 ? "▲" : "▼";
+  return (
+    <span className={`pill ${cls} gap-1`} title={label}>
+      {arrow} {Math.abs(pct).toFixed(Math.abs(pct) < 10 ? 1 : 0)}%
+    </span>
+  );
+}
+
 export function StatCard({
   label,
   value,
@@ -94,6 +145,9 @@ export function StatCard({
   tone = "slate",
   icon,
   spark,
+  delta,
+  deltaLabel,
+  to,
 }: {
   label: string;
   value: string | number;
@@ -101,27 +155,54 @@ export function StatCard({
   tone?: keyof typeof toneMap;
   icon?: ReactNode;
   spark?: number[];
+  /** % change over the visible range; use seriesDelta() to compute */
+  delta?: number | null;
+  deltaLabel?: string;
+  /** navigate here on click — turns the whole card into a link */
+  to?: string;
 }) {
   const t = toneMap[tone] ?? toneMap.slate;
-  return (
-    <div className="card p-4 flex flex-col gap-1.5 transition-shadow hover:shadow-md">
+  const numeric = typeof value === "number";
+  const animated = useCountUp(numeric ? (value as number) : 0);
+  const shown = numeric ? fmtNum(animated) : value;
+
+  const body = (
+    <>
       <div className="flex items-center gap-2">
         {icon && (
           <span className={`w-8 h-8 shrink-0 rounded-lg grid place-items-center ${t.bg} ${t.text} ring-1 ${t.ring}`}>{icon}</span>
         )}
         <div className="text-xs font-medium text-muted truncate min-w-0">{label}</div>
+        {delta != null && (
+          <div className="ml-auto shrink-0">
+            <DeltaChip pct={delta} label={deltaLabel} />
+          </div>
+        )}
       </div>
       <div className="flex items-end justify-between gap-2">
-        <div className={`text-2xl font-bold tabular-nums leading-none ${t.text}`}>{value}</div>
-        {spark && (
-          <div className="shrink-0">
+        <div className={`text-[1.7rem] font-bold tabular-nums leading-none ${t.text}`}>{shown}</div>
+        {spark && spark.length > 1 && (
+          <div className="shrink-0 opacity-80">
             <Sparkline data={spark} color={tone === "slate" ? BRAND : undefined} />
           </div>
         )}
       </div>
       {sub && <div className="text-xs text-muted">{sub}</div>}
-    </div>
+    </>
   );
+
+  const cls = "card p-4 flex flex-col gap-1.5 transition-all";
+  if (to) {
+    return (
+      <Link
+        to={to}
+        className={`${cls} hover:shadow-md hover:border-brand-200 hover:-translate-y-px focus-visible:ring-2 focus-visible:ring-brand-500 outline-none`}
+      >
+        {body}
+      </Link>
+    );
+  }
+  return <div className={`${cls} hover:shadow-md`}>{body}</div>;
 }
 
 // ---------------------------------------------------------------------------

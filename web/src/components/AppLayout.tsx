@@ -1,7 +1,9 @@
-import { ReactNode, useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { ReactNode, useEffect, useRef, useState } from "react";
+import { NavLink, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { useRefresh } from "../lib/refresh";
+import { api, AlertsData } from "../lib/api";
+import { usePolling } from "../lib/refresh";
 import GlobalSearch from "./GlobalSearch";
 
 const groups = [
@@ -75,15 +77,116 @@ function Icon({ name, className = "w-5 h-5" }: { name: string; className?: strin
   );
 }
 
-export default function AppLayout({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuth();
-  const { refresh, refreshing, lastUpdated } = useRefresh();
-  const loc = useLocation();
-  const title = titles[loc.pathname] ?? (loc.pathname.startsWith("/devices/") ? "Cihaz detalı" : "");
-  const initials = (user?.username ?? "?").slice(0, 2).toUpperCase();
+// Header bell: active-alert count badge + a dropdown with the current alerts.
+function AlertBell({ alerts }: { alerts: AlertsData | null }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const active = alerts?.active ?? [];
+  const critical = alerts?.counts.critical ?? 0;
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onClick);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onClick);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button className="btn relative" aria-label="Alertlər" onClick={() => setOpen((o) => !o)}>
+        <Icon name="bell" className="w-4 h-4" />
+        {active.length > 0 && (
+          <span
+            className={`absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-semibold text-white grid place-items-center ${
+              critical > 0 ? "bg-red-500" : "bg-amber-500"
+            }`}
+          >
+            {active.length}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-11 z-50 w-80 card shadow-lg overflow-hidden">
+          <div className="px-3 py-2.5 border-b border-line flex items-center">
+            <span className="text-sm font-semibold">Aktiv alertlər</span>
+            <span className="ml-auto text-xs text-muted">{active.length ? `${active.length} aktiv` : "təmiz"}</span>
+          </div>
+          <div className="max-h-72 overflow-y-auto">
+            {active.length === 0 && (
+              <div className="px-3 py-6 text-center text-sm text-muted">Heç bir aktiv alert yoxdur ✓</div>
+            )}
+            {active.slice(0, 6).map((a, i) => (
+              <div key={i} className="px-3 py-2 border-b border-line last:border-0 flex gap-2.5">
+                <span
+                  className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${a.level === "critical" ? "bg-red-500" : "bg-amber-400"}`}
+                />
+                <div className="min-w-0">
+                  <div className="text-sm font-medium truncate">
+                    {a.rule} — {a.target}
+                  </div>
+                  <div className="text-xs text-muted truncate">{a.message}</div>
+                </div>
+              </div>
+            ))}
+            {active.length > 6 && (
+              <div className="px-3 py-1.5 text-xs text-muted">+{active.length - 6} daha…</div>
+            )}
+          </div>
+          <Link
+            to="/alerts"
+            onClick={() => setOpen(false)}
+            className="block px-3 py-2 text-sm text-brand-600 font-medium hover:bg-page border-t border-line"
+          >
+            Bütün alertlərə bax →
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Live connection dot: green = polls succeeding, amber = data going stale,
+// red = polls failing. Derived from real poll results (not hardcoded).
+function LiveDot() {
+  const { status, lastUpdated } = useRefresh();
   const updatedAt = lastUpdated
     ? lastUpdated.toLocaleTimeString("az", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
     : "—";
+  const cfg = {
+    live: { dot: "bg-green-500", pulse: true, text: `Canlı · ${updatedAt}` },
+    stale: { dot: "bg-amber-400", pulse: false, text: `Köhnəlib · son ${updatedAt}` },
+    error: { dot: "bg-red-500", pulse: false, text: "Bağlantı problemi" },
+  }[status];
+  return (
+    <div className="hidden md:flex items-center gap-1.5 text-xs text-muted" title={`Son uğurlu yeniləmə: ${updatedAt}`}>
+      <span className="relative flex w-2 h-2">
+        {cfg.pulse && <span className={`absolute inline-flex w-full h-full rounded-full ${cfg.dot} opacity-60 animate-ping`} />}
+        <span className={`relative inline-flex w-2 h-2 rounded-full ${cfg.dot}`} />
+      </span>
+      <span>{cfg.text}</span>
+    </div>
+  );
+}
+
+export default function AppLayout({ children }: { children: ReactNode }) {
+  const { user, logout } = useAuth();
+  const { refresh, refreshing } = useRefresh();
+  const loc = useLocation();
+  const title = titles[loc.pathname] ?? (loc.pathname.startsWith("/devices/") ? "Cihaz detalı" : "");
+  const initials = (user?.username ?? "?").slice(0, 2).toUpperCase();
+
+  // One slow global poll feeds the bell badge, the dropdown and the sidebar
+  // count, so the header does not multiply the BFF load.
+  const { data: alerts } = usePolling<AlertsData>(() => api.alerts(), [], 30000);
+  const alertCount = alerts?.active.length ?? 0;
+  const hasCritical = (alerts?.counts.critical ?? 0) > 0;
 
   const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"));
   function toggleTheme() {
@@ -132,6 +235,15 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   >
                     <Icon name={n.icon} />
                     {n.label}
+                    {n.to === "/alerts" && alertCount > 0 && (
+                      <span
+                        className={`ml-auto min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-semibold text-white grid place-items-center ${
+                          hasCritical ? "bg-red-500" : "bg-amber-500"
+                        }`}
+                      >
+                        {alertCount}
+                      </span>
+                    )}
                   </NavLink>
                 ))}
               </div>
@@ -155,10 +267,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           <h1 className="text-lg font-semibold truncate">{title}</h1>
           <div className="ml-auto flex items-center gap-3">
             <GlobalSearch />
-            <div className="hidden md:flex items-center gap-1.5 text-xs text-muted">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-              <span>Son yeniləmə {updatedAt}</span>
-            </div>
+            <LiveDot />
+            <AlertBell alerts={alerts} />
             <button className="btn" aria-label="Tema" title={dark ? "İşıqlı rejim" : "Qaranlıq rejim"} onClick={toggleTheme}>
               <Icon name={dark ? "sun" : "moon"} className="w-4 h-4" />
             </button>

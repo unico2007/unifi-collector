@@ -49,6 +49,8 @@ export interface Overview {
   health: number;
   alerts: number;
   clientSeries: number[];
+  deviceSeries: number[];
+  healthSeries: number[];
   vendorSplit: { vendor: Vendor; devices: number; clients: number }[];
   recentLogs: { time: string; level: "info" | "warn" | "error"; msg: string }[];
 }
@@ -60,8 +62,13 @@ async function get<T>(path: string, mock: T): Promise<T> {
     const r = await fetch(`/api${path}`, { credentials: "include" });
     if (!r.ok) throw new Error(String(r.status));
     return (await r.json()) as T;
-  } catch {
-    return mock;
+  } catch (e) {
+    // Demo/mock data is a DEV-only convenience (standalone frontend work).
+    // In production a failure must surface to the caller: usePolling keeps the
+    // last good data and flips the header status to "connection problem"
+    // instead of silently rendering fake numbers.
+    if (import.meta.env.DEV) return mock;
+    throw e;
   }
 }
 
@@ -267,6 +274,8 @@ const mockOverview: Overview = {
   health: 98,
   alerts: 2,
   clientSeries: [120, 128, 131, 140, 138, 145, 150, 149, 152, 154, 151, 154],
+  deviceSeries: [25, 25, 25, 24, 25, 25, 25, 25, 23, 23, 23, 23],
+  healthSeries: [100, 100, 100, 96, 100, 100, 100, 100, 92, 92, 92, 92],
   vendorSplit: [
     { vendor: "unifi", devices: 22, clients: 154 },
     { vendor: "kerio", devices: 3, clients: 0 },
