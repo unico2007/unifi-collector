@@ -168,7 +168,14 @@ loki = Loki(settings.loki_url)
 
 # Local Ollama is always constructed (it is also the fallback + embedder host).
 _ollama = Ollama(settings.ollama_url, settings.ollama_model)
-if settings.nvidia_api_key:
+# Provider priority: Gemini > NVIDIA > local Ollama. Whichever cloud key is set
+# becomes the primary model; local Ollama is always the automatic fallback.
+if settings.gemini_api_key:
+    _gemini = OpenAICompat(
+        settings.gemini_base_url, settings.gemini_api_key, settings.gemini_model, settings.gemini_timeout
+    )
+    llm = FallbackLLM(primary=_gemini, fallback=_ollama)
+elif settings.nvidia_api_key:
     _nim = OpenAICompat(
         settings.nvidia_base_url, settings.nvidia_api_key, settings.nvidia_model, settings.nvidia_timeout
     )

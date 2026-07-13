@@ -10,9 +10,16 @@ import statistics
 import time
 
 from .clients import prom, llm
+from .config import settings
 
 # Severity ordering for sorting (lower = more urgent).
 _RANK = {"error": 0, "warn": 1, "info": 2}
+
+# Lazy TTL cache (see settings.insights_cache_seconds). The panel polls per
+# browser and each compute costs an LLM call; this decouples LLM calls from the
+# number of viewers/polls so small cloud free-tier quotas aren't burned.
+_cache: dict | None = None
+_cache_at: float = 0.0
 
 
 def _range(hours: int = 3):
@@ -196,7 +203,14 @@ async def _safe(coro) -> list[dict]:
 
 
 async def compute() -> dict:
-    """Gather all insights, rank them, and add a short LLM synthesis."""
+    """Gather all insights, rank them, and add a short LLM synthesis. Result is
+    cached for settings.insights_cache_seconds so repeated polls (many browser
+    tabs) don't each trigger an LLM call."""
+    global _cache, _cache_at
+    ttl = settings.insights_cache_seconds
+    if _cache is not None and ttl > 0 and (time.time() - _cache_at) < ttl:
+        return _cache
+
     insights: list[dict] = []
     insights += await _safe(_offline_devices())
     insights += await _safe(_metric_anomalies("unifi_device_cpu_percent", "%", 60, 2.5, "CPU"))
@@ -217,7 +231,9 @@ async def compute() -> dict:
         }]
 
     summary = await _summarize(insights)
-    return {"insights": insights, "summary": summary, "generated_at": int(time.time())}
+    result = {"insights": insights, "summary": summary, "generated_at": int(time.time())}
+    _cache, _cache_at = result, time.time()
+    return result
 
 
 async def _summarize(insights: list[dict]) -> str:

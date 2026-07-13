@@ -101,11 +101,11 @@ PLANNER_EXAMPLES = (
 
 PLANNER_SYSTEM = PLANNER_SYSTEM + PLANNER_EXAMPLES
 
-# Answer language. Auto by default: Azerbaijani when the cloud model (NVIDIA Qwen3)
-# is active — it handles AZ well — else English, because the local 7B is weak at
-# Azerbaijani (the reason answers were English before). AI_ANSWER_LANG overrides.
-# Users ask in AZ either way; the planner below stays English/JSON for routing.
-_LANG = settings.answer_lang or ("Azerbaijani" if settings.nvidia_api_key else "English")
+# Answer language. Auto by default: Azerbaijani when ANY cloud model (Gemini or
+# NVIDIA Qwen3) is active — both handle AZ well — else English, because the local
+# 7B is weak at Azerbaijani (the reason answers were English before).
+# AI_ANSWER_LANG overrides. Users ask in AZ either way; the planner stays English/JSON.
+_LANG = settings.answer_lang or ("Azerbaijani" if (settings.gemini_api_key or settings.nvidia_api_key) else "English")
 
 ANSWER_SYSTEM = f"""You are the Unico network monitoring assistant. Answer the user's
 question in clear, concise {_LANG}, using ONLY the provided query result. Do not

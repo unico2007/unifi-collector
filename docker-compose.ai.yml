@@ -22,7 +22,12 @@ services:
       # local-only. Never commit the key.
       AI_NVIDIA_API_KEY: "${NVIDIA_API_KEY:-}"
       AI_NVIDIA_MODEL: "${NVIDIA_MODEL:-qwen/qwen3.5-397b-a17b}"
-      # Empty = auto (Azerbaijani with the cloud model, English local-only).
+      # Google Gemini (OpenAI-compatible). Set GEMINI_API_KEY in .env to make it
+      # the PRIMARY model (takes priority over NVIDIA); Ollama stays as fallback.
+      # Fast + good Azerbaijani; free or paid key, same code.
+      AI_GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      AI_GEMINI_MODEL: "${GEMINI_MODEL:-gemini-2.5-flash}"
+      # Empty = auto (Azerbaijani with any cloud model, English local-only).
       AI_ANSWER_LANG: "${AI_ANSWER_LANG:-}"
     extra_hosts:
       - "host.docker.internal:host-gateway"

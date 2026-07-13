@@ -26,6 +26,16 @@ class Settings(BaseSettings):
     nvidia_model: str = "qwen/qwen3.5-397b-a17b"
     nvidia_timeout: float = 60.0
 
+    # Cloud LLM via Google Gemini (OpenAI-compatible endpoint). When
+    # AI_GEMINI_API_KEY is set it becomes the PRIMARY model (takes priority over
+    # NVIDIA), with local Ollama as the automatic fallback. Gemini 2.5 Flash is
+    # fast (~1-3s) and strong at Azerbaijani. Works with a free or paid key — same
+    # code, only the key differs. Never commit the key.
+    gemini_api_key: str = ""
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    gemini_model: str = "gemini-2.5-flash"
+    gemini_timeout: float = 40.0
+
     # Language the assistant answers in. Empty = auto: Azerbaijani when the cloud
     # model is active (nvidia_api_key set), else English (the local 7B is weak at
     # Azerbaijani). Set AI_ANSWER_LANG explicitly to override. Planner stays
@@ -49,6 +59,13 @@ class Settings(BaseSettings):
     # AI_CORS_ORIGINS to a comma-separated allowlist only if a browser must call
     # it directly. Never use "*" — it let any internet page script this API.
     cors_origins: str = ""
+
+    # Lazy TTL cache for the Overview "AI Insights" panel. The panel polls per
+    # browser, and each compute costs an LLM call — without this, N open tabs =
+    # N calls/minute, which blows small cloud free-tier daily quotas. With it the
+    # LLM runs at most once per this window regardless of viewers, and only when
+    # someone is actually looking (lazy). 0 disables caching.
+    insights_cache_seconds: int = 300
 
     # Guardrails for LLM-generated queries.
     max_range: str = "24h"      # cap the time range the agent may query
