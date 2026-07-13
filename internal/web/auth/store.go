@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite" // pure-Go driver: works with CGO_ENABLED=0
@@ -37,7 +38,12 @@ func OpenStore(path string) (*Store, error) {
 			return nil, err
 		}
 	}
-	db, err := sql.Open("sqlite", path)
+	// WAL + a busy timeout so a read never fails outright while another process
+	// (the create-user CLI opens the same file) holds a write lock — that would
+	// otherwise surface as a spurious SQLITE_BUSY on the per-request token_version
+	// check and bounce a valid session to login. WAL lets readers run during a
+	// write; busy_timeout waits out any remaining lock instead of erroring.
+	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
 	if err != nil {
 		return nil, err
 	}
@@ -48,8 +54,16 @@ func OpenStore(path string) (*Store, error) {
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS users (
 		username TEXT PRIMARY KEY,
 		password_hash TEXT NOT NULL,
-		role TEXT NOT NULL DEFAULT 'guest'
+		role TEXT NOT NULL DEFAULT 'guest',
+		token_version INTEGER NOT NULL DEFAULT 1
 	)`); err != nil {
+		return nil, err
+	}
+	// Migration for databases created before token_version existed. ALTER ADD
+	// COLUMN with a constant default is safe in SQLite; ignore the error when the
+	// column is already present (fresh DBs created by the statement above).
+	if _, err := db.Exec(`ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 1`); err != nil &&
+		!strings.Contains(err.Error(), "duplicate column") {
 		return nil, err
 	}
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)`); err != nil {
@@ -115,26 +129,56 @@ func (u *Store) UpsertUser(username, password, role string) error {
 	if err != nil {
 		return err
 	}
-	_, err = u.db.Exec(`INSERT INTO users (username, password_hash, role)
-		VALUES (?, ?, ?)
-		ON CONFLICT(username) DO UPDATE SET password_hash=excluded.password_hash, role=excluded.role`,
+	// On update (password or role change) bump token_version so any outstanding
+	// sessions for this user are revoked and they must re-authenticate — that is
+	// how a role change or password reset takes effect immediately.
+	_, err = u.db.Exec(`INSERT INTO users (username, password_hash, role, token_version)
+		VALUES (?, ?, ?, 1)
+		ON CONFLICT(username) DO UPDATE SET
+			password_hash=excluded.password_hash,
+			role=excluded.role,
+			token_version=users.token_version + 1`,
 		username, string(hash), role)
 	return err
 }
 
-// verify checks credentials and returns the stored role on success.
-func (u *Store) verify(username, password string) (role string, ok bool) {
+// verify checks credentials and returns the stored role and current token
+// version on success.
+func (u *Store) verify(username, password string) (role string, version int, ok bool) {
 	var hash string
-	err := u.db.QueryRow(`SELECT password_hash, role FROM users WHERE username = ?`, username).
-		Scan(&hash, &role)
+	err := u.db.QueryRow(`SELECT password_hash, role, token_version FROM users WHERE username = ?`, username).
+		Scan(&hash, &role, &version)
 	if err != nil {
 		// Unknown user: still run one bcrypt comparison against the dummy hash so
 		// the response time doesn't reveal whether the username exists.
 		_ = bcrypt.CompareHashAndPassword(u.dummyHash, []byte(password))
-		return "", false
+		return "", 0, false
 	}
 	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil {
-		return "", false
+		return "", 0, false
 	}
-	return role, true
+	return role, version, true
+}
+
+// tokenVersion returns the user's current token version. Three outcomes are
+// kept distinct so the caller doesn't confuse a real revocation with a DB blip:
+//   - (v, true, nil)    user exists, v is current
+//   - (0, false, nil)   user gone (deleted) => genuine revocation
+//   - (0, false, err)   transient DB error (e.g. lock/IO) => NOT a revocation
+func (u *Store) tokenVersion(username string) (version int, ok bool, err error) {
+	err = u.db.QueryRow(`SELECT token_version FROM users WHERE username = ?`, username).Scan(&version)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	return version, true, nil
+}
+
+// bumpTokenVersion invalidates all of a user's outstanding sessions (used by
+// logout). A no-op if the user doesn't exist.
+func (u *Store) bumpTokenVersion(username string) error {
+	_, err := u.db.Exec(`UPDATE users SET token_version = token_version + 1 WHERE username = ?`, username)
+	return err
 }

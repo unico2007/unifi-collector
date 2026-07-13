@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/murad/unifi-collector/internal/web/respond"
 )
 
@@ -21,17 +23,22 @@ type Service struct {
 	signer   *signer
 	throttle *loginThrottle
 	secure   bool // set the Secure flag on session cookies (enable behind HTTPS)
+	log      *zap.Logger
 }
 
 // NewService builds the auth service on an open user store. secureCookie should
 // be true only when the dashboard is served over HTTPS (otherwise the browser
-// won't send the cookie over plain-HTTP LAN and login breaks).
-func NewService(store *Store, secureCookie bool) *Service {
+// won't send the cookie over plain-HTTP LAN and login breaks). log may be nil.
+func NewService(store *Store, secureCookie bool, log *zap.Logger) *Service {
+	if log == nil {
+		log = zap.NewNop()
+	}
 	return &Service{
 		store:    store,
 		signer:   newSigner(store.secret),
 		throttle: newLoginThrottle(),
 		secure:   secureCookie,
+		log:      log,
 	}
 }
 
@@ -71,7 +78,7 @@ func (s *Service) Login(w http.ResponseWriter, r *http.Request) {
 		respond.JSON(w, http.StatusBadRequest, map[string]string{"error": "bad request"})
 		return
 	}
-	role, ok := s.store.verify(req.Username, req.Password)
+	role, version, ok := s.store.verify(req.Username, req.Password)
 	if !ok {
 		s.throttle.recordFailure(ip, now)
 		respond.JSON(w, http.StatusUnauthorized, map[string]string{"error": "İstifadəçi adı və ya parol yanlışdır"})
@@ -80,7 +87,7 @@ func (s *Service) Login(w http.ResponseWriter, r *http.Request) {
 	s.throttle.reset(ip)
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
-		Value:    s.signer.sign(req.Username, role),
+		Value:    s.signer.sign(req.Username, role, version),
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   s.secure,
@@ -90,9 +97,19 @@ func (s *Service) Login(w http.ResponseWriter, r *http.Request) {
 	respond.JSON(w, http.StatusOK, userResp{Username: req.Username, Role: role})
 }
 
-// Logout clears the session cookie. Flags mirror the ones set at login so the
-// browser reliably matches and removes the cookie.
-func (s *Service) Logout(w http.ResponseWriter, _ *http.Request) {
+// Logout revokes the user's sessions (bumps their token_version so every
+// outstanding cookie is rejected) and clears the cookie. Flags mirror the ones
+// set at login so the browser reliably matches and removes the cookie.
+func (s *Service) Logout(w http.ResponseWriter, r *http.Request) {
+	// Use verifyIgnoringExpiry so even a just-expired (but authentic) cookie still
+	// revokes the user's other sessions. Log a bump failure instead of dropping
+	// it silently — on failure the other sessions live until their 12h expiry.
+	if sess, ok := s.signer.verifyIgnoringExpiry(cookieValue(r)); ok {
+		if err := s.store.bumpTokenVersion(sess.username); err != nil {
+			s.log.Warn("logout: could not revoke sessions (token_version bump failed)",
+				zap.String("user", sess.username), zap.Error(err))
+		}
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    "",
@@ -115,12 +132,36 @@ func (s *Service) Me(w http.ResponseWriter, r *http.Request) {
 	respond.JSON(w, http.StatusOK, userResp{Username: sess.username, Role: sess.role})
 }
 
+// cookieValue returns the raw session cookie value, or "" if absent.
+func cookieValue(r *http.Request) string {
+	if c, err := r.Cookie(sessionCookie); err == nil {
+		return c.Value
+	}
+	return ""
+}
+
+// currentSession validates the cookie's signature AND confirms the token's
+// version still matches the user's current token_version in the DB. The second
+// check is what makes logout / role / password changes revoke a token
+// immediately, instead of it staying valid until the 12h expiry.
 func (s *Service) currentSession(r *http.Request) (session, bool) {
-	c, err := r.Cookie(sessionCookie)
-	if err != nil {
+	sess, ok := s.signer.verify(cookieValue(r))
+	if !ok {
 		return session{}, false
 	}
-	return s.signer.verify(c.Value)
+	current, exists, err := s.store.tokenVersion(sess.username)
+	if err != nil {
+		// Transient DB error (lock/IO). Don't deauthenticate a validly-signed
+		// session over a blip — fail open and log. Real revocations are a
+		// SUCCESSFUL query with a mismatched version, so they still take effect.
+		s.log.Warn("session check: token_version read failed; accepting valid signature",
+			zap.String("user", sess.username), zap.Error(err))
+		return sess, true
+	}
+	if !exists || current != sess.version {
+		return session{}, false
+	}
+	return sess, true
 }
 
 // RequireAuth wraps a handler so only authenticated requests reach it.

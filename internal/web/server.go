@@ -67,7 +67,7 @@ func New(cfg Config, users *auth.Store, log *zap.Logger) (*Server, error) {
 	s := &Server{
 		cfg:    cfg,
 		log:    log,
-		authn:  auth.NewService(users, cfg.CookieSecure),
+		authn:  auth.NewService(users, cfg.CookieSecure, log),
 		alerts: alerts,
 		eval:   alert.NewEvaluator(alerts, log),
 		h:      handler.New(prom, loki, alerts),
