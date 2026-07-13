@@ -37,17 +37,27 @@ type Config struct {
 // ErrAuth is returned when Kerio rejects the credentials.
 var ErrAuth = errors.New("kerio: authentication failed")
 
+// loginFailureCooldown suppresses repeated Session.login attempts after a
+// failure. Without it a broken login (bad creds, or the 2026-07 incident where
+// a WSL NAT glitch made every attempt time out) is retried on EVERY collector
+// cycle — 30s interval = ~2880 attempts/day, which lit up the firewall's
+// security log as a suspected brute-force. With the cooldown a broken state
+// costs at most ~12 attempts/hour; a successful login clears it immediately.
+const loginFailureCooldown = 5 * time.Minute
+
 // Client is a concurrency-safe Kerio Control JSON-RPC client.
 type Client struct {
 	cfg Config
 	log *zap.Logger
 	hc  *http.Client
 
-	loginMu sync.Mutex
-	mu      sync.RWMutex
-	token   string
-	ready   bool
-	nextID  int
+	loginMu     sync.Mutex
+	mu          sync.RWMutex
+	token       string
+	ready       bool
+	nextID      int
+	loginFailAt time.Time
+	loginFailed error
 }
 
 // rpcRequest / rpcResponse model the JSON-RPC 2.0 envelope.
@@ -115,9 +125,17 @@ func (c *Client) ensureLoggedIn(ctx context.Context) error {
 	defer c.loginMu.Unlock()
 	c.mu.RLock()
 	ok = c.ready
+	failedAt, failedErr := c.loginFailAt, c.loginFailed
 	c.mu.RUnlock()
 	if ok {
 		return nil
+	}
+	// Recent failure: return it without hitting the API again (see the
+	// loginFailureCooldown comment). Covers both the scheduled-collect path and
+	// the mid-call re-login path.
+	if failedErr != nil && time.Since(failedAt) < loginFailureCooldown {
+		return fmt.Errorf("kerio: login suppressed for %s after failure: %w",
+			loginFailureCooldown, failedErr)
 	}
 	return c.doLogin(ctx)
 }
@@ -135,23 +153,41 @@ func (c *Client) doLogin(ctx context.Context) error {
 	// Login itself carries no X-Token yet.
 	resp, err := c.rawCall(ctx, "Session.login", params, "")
 	if err != nil {
+		c.recordLoginFailure(err)
 		return err
 	}
 	if resp.Error != nil {
-		return fmt.Errorf("%w: %s", ErrAuth, resp.Error.Message)
+		err := fmt.Errorf("%w: %s", ErrAuth, resp.Error.Message)
+		c.recordLoginFailure(err)
+		return err
 	}
 	var out struct {
 		Token string `json:"token"`
 	}
 	if err := json.Unmarshal(resp.Result, &out); err != nil {
-		return fmt.Errorf("kerio: decoding login result: %w", err)
+		err = fmt.Errorf("kerio: decoding login result: %w", err)
+		c.recordLoginFailure(err)
+		return err
 	}
 	c.mu.Lock()
 	c.token = out.Token
 	c.ready = true
+	c.loginFailed = nil
+	c.loginFailAt = time.Time{}
 	c.mu.Unlock()
 	c.log.Info("kerio: logged in")
 	return nil
+}
+
+// recordLoginFailure arms the login cooldown (see loginFailureCooldown) and
+// logs the failure so a broken-auth window is visible in `docker logs`.
+func (c *Client) recordLoginFailure(err error) {
+	c.mu.Lock()
+	c.loginFailed = err
+	c.loginFailAt = time.Now()
+	c.mu.Unlock()
+	c.log.Warn("kerio: login failed; further attempts suppressed",
+		zap.Duration("cooldown", loginFailureCooldown), zap.Error(err))
 }
 
 // call performs an authenticated JSON-RPC call and decodes result into out.

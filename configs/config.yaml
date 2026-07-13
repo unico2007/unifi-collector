@@ -51,9 +51,12 @@ syslog:
 # Per-collector schedule. Add a new key to register a collector without
 # touching any Go struct.
 collectors:
+  # devices is the only collector that also polls Kerio; 60s halves the
+  # firewall-side request/login noise (30s looked like probing to the admins)
+  # while device state is still fresh enough for the dashboard.
   devices:
     enabled: true
-    interval: 30s
+    interval: 60s
   clients:
     enabled: true
     interval: 30s

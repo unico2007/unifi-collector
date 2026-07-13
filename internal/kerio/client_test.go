@@ -82,3 +82,37 @@ func TestClient_AuthFailure(t *testing.T) {
 		t.Fatal("expected auth error, got nil")
 	}
 }
+
+// Verifies the login-failure cooldown: after one failed Session.login, further
+// Login calls within the cooldown window are suppressed locally instead of
+// hammering the firewall on every collector cycle (the 2026-07 "3600 login
+// attempts" incident).
+func TestClient_LoginFailureCooldown(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Write([]byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"Invalid username or password"}}`))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv.URL)
+	for i := 0; i < 5; i++ {
+		if err := c.Login(context.Background()); err == nil {
+			t.Fatal("expected auth error, got nil")
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("Session.login hit the server %d times, want 1 (cooldown should suppress retries)", calls)
+	}
+
+	// Expire the cooldown; the next Login must reach the server again.
+	c.mu.Lock()
+	c.loginFailAt = time.Now().Add(-loginFailureCooldown - time.Second)
+	c.mu.Unlock()
+	if err := c.Login(context.Background()); err == nil {
+		t.Fatal("expected auth error, got nil")
+	}
+	if calls != 2 {
+		t.Fatalf("Session.login calls = %d after cooldown expiry, want 2", calls)
+	}
+}
