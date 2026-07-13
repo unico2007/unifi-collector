@@ -35,6 +35,7 @@ type Config struct {
 	TelegramToken          string // optional: Telegram bot token for alert notifications
 	TelegramChatID         string // optional: Telegram chat id to notify
 	TelegramCriticalChatID string // optional: route critical alerts to this chat instead
+	CookieSecure           bool   // set Secure flag on the session cookie (enable when served over HTTPS)
 	ReadTimeout            time.Duration
 	WriteTimeout           time.Duration
 }
@@ -66,7 +67,7 @@ func New(cfg Config, users *auth.Store, log *zap.Logger) (*Server, error) {
 	s := &Server{
 		cfg:    cfg,
 		log:    log,
-		authn:  auth.NewService(users),
+		authn:  auth.NewService(users, cfg.CookieSecure),
 		alerts: alerts,
 		eval:   alert.NewEvaluator(alerts, log),
 		h:      handler.New(prom, loki, alerts),
@@ -113,11 +114,39 @@ func New(cfg Config, users *auth.Store, log *zap.Logger) (*Server, error) {
 
 	s.http = &http.Server{
 		Addr:         cfg.Addr,
-		Handler:      mux,
+		Handler:      securityHeaders(mux),
 		ReadTimeout:  cfg.ReadTimeout,
 		WriteTimeout: cfg.WriteTimeout,
 	}
 	return s, nil
+}
+
+// cspThemeScriptHash is the sha256 of the one inline <script> in web/index.html
+// (the pre-paint theme-init snippet). It is pinned so the CSP can forbid all
+// other inline scripts without an 'unsafe-inline' escape hatch. If that snippet
+// is ever edited, recompute this hash (else the theme just flashes on load; the
+// app still works).
+const cspThemeScriptHash = "sha256-2mgJOBxM3lhZD3R9LzEcasRocw97lWvXwzftCs/a8z8="
+
+// securityHeaders adds baseline hardening headers to every response: block MIME
+// sniffing, deny framing (clickjacking), trim the referrer, and a conservative
+// CSP for the self-hosted SPA. The app loads only same-origin assets and talks
+// only to its own /api, so everything is locked to 'self'.
+func securityHeaders(next http.Handler) http.Handler {
+	csp := "default-src 'self'; " +
+		"script-src 'self' '" + cspThemeScriptHash + "'; " +
+		"style-src 'self' 'unsafe-inline'; " + // Tailwind + component inline styles
+		"img-src 'self' data:; " +
+		"connect-src 'self'; object-src 'none'; base-uri 'self'; " +
+		"form-action 'self'; frame-ancestors 'none'"
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("Content-Security-Policy", csp)
+		next.ServeHTTP(w, r)
+	})
 }
 
 // handleAIProxy forwards /api/ai/* to the AI service, rewriting the path from
@@ -138,14 +167,21 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 		respond.JSON(w, http.StatusOK, map[string]string{"status": "unico BFF: frontend not bundled"})
 		return
 	}
-	clean := filepath.Clean(r.URL.Path)
-	full := filepath.Join(s.cfg.StaticDir, clean)
+	// Resolve the request against the static root and confirm it stays inside it,
+	// so a crafted path (e.g. "..%2f..") can never escape to serve arbitrary
+	// host files. net/http already cleans paths, but this is explicit defense.
+	root := s.cfg.StaticDir
+	full := filepath.Join(root, filepath.Clean("/"+r.URL.Path))
+	if rel, err := filepath.Rel(root, full); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		http.ServeFile(w, r, filepath.Join(root, "index.html"))
+		return
+	}
 	// Serve the file if it exists; otherwise fall back to index.html (SPA).
 	if info, err := os.Stat(full); err == nil && !info.IsDir() {
 		http.ServeFile(w, r, full)
 		return
 	}
-	http.ServeFile(w, r, filepath.Join(s.cfg.StaticDir, "index.html"))
+	http.ServeFile(w, r, filepath.Join(root, "index.html"))
 }
 
 // Run starts the server and blocks until ctx is cancelled.

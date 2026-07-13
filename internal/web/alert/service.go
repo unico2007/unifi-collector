@@ -111,6 +111,7 @@ func (s *Service) SettingsUpdate(w http.ResponseWriter, r *http.Request) {
 		CPU    *float64 `json:"cpuPercent"`
 		Memory *float64 `json:"memoryPercent"`
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10) // cap the request body (4 KiB)
 	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
 		respond.JSON(w, http.StatusBadRequest, map[string]string{"error": "bad request"})
 		return

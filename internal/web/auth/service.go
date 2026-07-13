@@ -2,22 +2,45 @@ package auth
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/murad/unifi-collector/internal/web/respond"
 )
 
+// maxLoginBody caps the login request body so a client can't stream an
+// unbounded payload into the JSON decoder.
+const maxLoginBody = 4 << 10 // 4 KiB
+
 // Service wires the user store to the session signer and exposes the auth
 // HTTP handlers plus the route-guarding middleware.
 type Service struct {
-	store  *Store
-	signer *signer
+	store    *Store
+	signer   *signer
+	throttle *loginThrottle
+	secure   bool // set the Secure flag on session cookies (enable behind HTTPS)
 }
 
-// NewService builds the auth service on an open user store.
-func NewService(store *Store) *Service {
-	return &Service{store: store, signer: newSigner(store.secret)}
+// NewService builds the auth service on an open user store. secureCookie should
+// be true only when the dashboard is served over HTTPS (otherwise the browser
+// won't send the cookie over plain-HTTP LAN and login breaks).
+func NewService(store *Store, secureCookie bool) *Service {
+	return &Service{
+		store:    store,
+		signer:   newSigner(store.secret),
+		throttle: newLoginThrottle(),
+		secure:   secureCookie,
+	}
+}
+
+// clientIP extracts the best-effort client address for throttling.
+func clientIP(r *http.Request) string {
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
+	}
+	return r.RemoteAddr
 }
 
 type loginReq struct {
@@ -32,30 +55,53 @@ type userResp struct {
 
 // Login verifies credentials and sets the session cookie.
 func (s *Service) Login(w http.ResponseWriter, r *http.Request) {
+	ip := clientIP(r)
+	now := time.Now()
+	if wait := s.throttle.blockedFor(ip, now); wait > 0 {
+		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
+		respond.JSON(w, http.StatusTooManyRequests, map[string]string{
+			"error": "Çox sayda uğursuz cəhd. Bir azdan yenidən yoxlayın.",
+		})
+		return
+	}
+
 	var req loginReq
+	r.Body = http.MaxBytesReader(w, r.Body, maxLoginBody)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.JSON(w, http.StatusBadRequest, map[string]string{"error": "bad request"})
 		return
 	}
 	role, ok := s.store.verify(req.Username, req.Password)
 	if !ok {
+		s.throttle.recordFailure(ip, now)
 		respond.JSON(w, http.StatusUnauthorized, map[string]string{"error": "İstifadəçi adı və ya parol yanlışdır"})
 		return
 	}
+	s.throttle.reset(ip)
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    s.signer.sign(req.Username, role),
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   s.secure,
 		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Now().Add(sessionTTL),
 	})
 	respond.JSON(w, http.StatusOK, userResp{Username: req.Username, Role: role})
 }
 
-// Logout clears the session cookie.
+// Logout clears the session cookie. Flags mirror the ones set at login so the
+// browser reliably matches and removes the cookie.
 func (s *Service) Logout(w http.ResponseWriter, _ *http.Request) {
-	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookie,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   s.secure,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
 	respond.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 

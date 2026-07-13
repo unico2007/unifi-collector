@@ -23,6 +23,11 @@ import (
 type Store struct {
 	db     *sql.DB
 	secret []byte
+	// dummyHash is a valid bcrypt hash compared against when the requested user
+	// does not exist, so a failed login takes the same time whether the username
+	// is real or not — this closes the timing side-channel that would otherwise
+	// let an attacker enumerate valid usernames.
+	dummyHash []byte
 }
 
 // OpenStore opens (creating if needed) the SQLite user database.
@@ -54,7 +59,18 @@ func OpenStore(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Store{db: db, secret: secret}, nil
+	// A throwaway hash of a random password, used to equalize verify() timing for
+	// unknown usernames. Generated once at cost=DefaultCost so it matches real
+	// hashes' comparison cost.
+	rnd := make([]byte, 16)
+	if _, err := rand.Read(rnd); err != nil {
+		return nil, err
+	}
+	dummyHash, err := bcrypt.GenerateFromPassword(rnd, bcrypt.DefaultCost)
+	if err != nil {
+		return nil, err
+	}
+	return &Store{db: db, secret: secret, dummyHash: dummyHash}, nil
 }
 
 // DB returns the underlying handle so sibling features (alerting) can create
@@ -112,6 +128,9 @@ func (u *Store) verify(username, password string) (role string, ok bool) {
 	err := u.db.QueryRow(`SELECT password_hash, role FROM users WHERE username = ?`, username).
 		Scan(&hash, &role)
 	if err != nil {
+		// Unknown user: still run one bcrypt comparison against the dummy hash so
+		// the response time doesn't reveal whether the username exists.
+		_ = bcrypt.CompareHashAndPassword(u.dummyHash, []byte(password))
 		return "", false
 	}
 	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil {

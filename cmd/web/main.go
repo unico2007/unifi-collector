@@ -43,6 +43,7 @@ func run() error {
 		tgToken    = flag.String("telegram-token", env("WEB_TELEGRAM_TOKEN", ""), "Telegram bot token for alert notifications (optional)")
 		tgChat     = flag.String("telegram-chat", env("WEB_TELEGRAM_CHAT_ID", ""), "Telegram chat id to notify (optional)")
 		tgCritChat = flag.String("telegram-critical-chat", env("WEB_TELEGRAM_CRITICAL_CHAT_ID", ""), "Telegram chat id for critical alerts (optional; falls back to -telegram-chat)")
+		cookieSec  = flag.Bool("cookie-secure", env("WEB_COOKIE_SECURE", "") == "true", "set Secure flag on the session cookie (enable when serving over HTTPS)")
 		createUser = flag.Bool("create-user", false, "create/update a user, then exit")
 		username   = flag.String("user", "", "username (with -create-user)")
 		password   = flag.String("pass", "", "password (with -create-user)")
@@ -82,6 +83,7 @@ func run() error {
 		TelegramToken:          *tgToken,
 		TelegramChatID:         *tgChat,
 		TelegramCriticalChatID: *tgCritChat,
+		CookieSecure:           *cookieSec,
 		ReadTimeout:            15 * time.Second,
 		// The /api/ai/* proxy can legitimately take up to ~2 min: NVIDIA NIM
 		// (60s) then the local Ollama fallback (CPU 7B easily >30s). A 30s
