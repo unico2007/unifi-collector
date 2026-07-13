@@ -125,11 +125,15 @@ async def _live_inventory() -> list[Chunk]:
 _TOKEN = re.compile(r"[\wğüşıöçəĞÜŞİÖÇƏ]+", re.UNICODE)
 # Fold Azerbaijani diacritics so lexical matching is robust to users typing
 # without them (e.g. "yaddas"/"yuksek" should match "yaddaş"/"yüksək").
-_FOLD = str.maketrans("əıöüçşğƏIİÖÜÇŞĞ", "eioucsgeiioucsg")
+# Folding must run BEFORE .lower(): Python lowercases the dotted capital "İ" to
+# "i" + U+0307 (combining dot above), which .translate can't reach afterwards, so
+# "İnternet" would never match "internet". The third maketrans arg deletes any
+# stray U+0307, and the uppercase entries map dotted/dotless capitals directly.
+_FOLD = str.maketrans("əıöüçşğƏIİÖÜÇŞĞ", "eioucsgeiioucsg", "̇")
 
 
 def _tokens(text: str) -> set[str]:
-    return {t.lower().translate(_FOLD) for t in _TOKEN.findall(text) if len(t) > 2}
+    return {t.translate(_FOLD).lower() for t in _TOKEN.findall(text) if len(t) > 2}
 
 
 @dataclass
@@ -151,47 +155,49 @@ class KnowledgeBase:
     def ready(self) -> bool:
         return self._built and bool(self.chunks)
 
+    async def _compute(self) -> tuple[list[Chunk], np.ndarray | None, list[set[str]], str | None]:
+        """Build the index data (markdown + live inventory + embeddings) WITHOUT
+        mutating self, so callers can decide whether to commit the result. Returns
+        (chunks, matrix, token_sets, error); error is set on any failure."""
+        chunks = _load_markdown() + await _live_inventory()
+        if not chunks:
+            return [], None, [], "bilik bazası boşdur"
+        try:
+            vecs = await embedder.embed([c.text for c in chunks])
+        except Exception as e:  # noqa: BLE001
+            return [], None, [], f"embedding alınmadı: {e}"
+        arr = np.asarray(vecs, dtype=np.float32)
+        if arr.ndim != 2 or arr.shape[0] != len(chunks):
+            return [], None, [], "embedding ölçüsü uyğunsuzdur"
+        norms = np.linalg.norm(arr, axis=1, keepdims=True)
+        norms[norms == 0] = 1.0
+        return chunks, arr / norms, [_tokens(c.text) for c in chunks], None
+
+    def _commit(self, chunks, matrix, token_sets, error) -> None:
+        self.chunks, self.matrix, self.token_sets, self.error = chunks, matrix, token_sets, error
+        self._built = True
+
     async def ensure_ready(self) -> None:
         if self._built:
             return
         async with self._lock:
             if self._built:
                 return
-            chunks = _load_markdown() + await _live_inventory()
-            if not chunks:
-                self.error = "bilik bazası boşdur"
-                self._built = True
-                return
-            try:
-                vecs = await embedder.embed([c.text for c in chunks])
-            except Exception as e:  # noqa: BLE001
-                self.error = f"embedding alınmadı: {e}"
-                self._built = True
-                return
-            arr = np.asarray(vecs, dtype=np.float32)
-            if arr.ndim != 2 or arr.shape[0] != len(chunks):
-                self.error = "embedding ölçüsü uyğunsuzdur"
-                self._built = True
-                return
-            norms = np.linalg.norm(arr, axis=1, keepdims=True)
-            norms[norms == 0] = 1.0
-            self.matrix = arr / norms
-            self.chunks = chunks
-            self.token_sets = [_tokens(c.text) for c in chunks]
-            self.error = None
-            self._built = True
+            self._commit(*await self._compute())
 
     async def rebuild(self) -> None:
         """Force a fresh index: re-read knowledge/*.md and re-snapshot the live
-        Prometheus inventory. Reset flags under the lock, then let ensure_ready
-        (which re-acquires the lock — asyncio.Lock isn't reentrant) rebuild."""
+        Prometheus inventory. Atomic — the new data is swapped in only if the
+        rebuild succeeds, so a transient embedder/Prometheus outage during a
+        periodic auto-reindex can't wipe an already-working index (we keep the old
+        chunks and just record the error). asyncio.Lock isn't reentrant, so
+        _compute must not re-acquire it — it doesn't touch self."""
         async with self._lock:
-            self._built = False
-            self.chunks = []
-            self.matrix = None
-            self.token_sets = []
-            self.error = None
-        await self.ensure_ready()
+            chunks, matrix, token_sets, error = await self._compute()
+            if error is None or not self._built:
+                self._commit(chunks, matrix, token_sets, error)
+            else:
+                self.error = error  # keep the working index, note why refresh failed
 
     async def search(self, query: str, k: int | None = None) -> list[Hit]:
         await self.ensure_ready()

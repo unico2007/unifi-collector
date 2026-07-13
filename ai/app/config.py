@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     # RAG retrieval (Phase 3).
     rag_top_k: int = 4          # chunks fed to the answerer
     rag_min_score: float = 0.35  # below this, treat as "no relevant knowledge"
+    # Periodically re-snapshot the live device inventory into the RAG index so it
+    # doesn't go stale as devices change (no restart/manual reindex needed).
+    # 0 disables the background refresh. Default 30 min.
+    rag_reindex_seconds: int = 1800
 
     # Guardrails for LLM-generated queries.
     max_range: str = "24h"      # cap the time range the agent may query

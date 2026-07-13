@@ -1,3 +1,7 @@
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,7 +13,35 @@ from . import agent
 from . import insights
 from .rag import kb
 
-app = FastAPI(title="Unico AI service", version="0.1.0")
+log = logging.getLogger("unico.ai")
+
+
+async def _auto_reindex() -> None:
+    """Keep the RAG index's live device inventory fresh without a restart. Builds
+    once, then rebuilds every rag_reindex_seconds; rebuild() is atomic so a
+    transient failure here never wipes a working index."""
+    interval = settings.rag_reindex_seconds
+    await kb.ensure_ready()
+    if interval <= 0:
+        return
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            await kb.rebuild()
+        except Exception:  # noqa: BLE001
+            log.warning("RAG auto-reindex failed", exc_info=True)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(_auto_reindex())
+    try:
+        yield
+    finally:
+        task.cancel()
+
+
+app = FastAPI(title="Unico AI service", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
 )
